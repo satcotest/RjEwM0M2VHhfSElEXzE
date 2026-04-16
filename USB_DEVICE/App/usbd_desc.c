@@ -146,23 +146,27 @@ USBD_DescriptorsTypeDef FS_Desc =
   #pragma data_alignment=4
 #endif /* defined ( __ICCARM__ ) */
 /** USB standard device descriptor. */
-__ALIGN_BEGIN uint8_t USBD_DescDeviceFS[] __ALIGN_END = {
-  0x12,                       /* bLength */
-  USB_DESC_TYPE_DEVICE,       /* bDescriptorType */
-  0x00, 0x02,                 /* bcdUSB = 2.00 */
-  0x00,                       /* bDeviceClass */
-  0x00,                       /* bDeviceSubClass */
-  0x00,                       /* bDeviceProtocol */
-  USB_MAX_EP0_SIZE,           /* bMaxPacketSize */
-  // ========== 关键修改：APC原厂VID/PID ==========
-  0x1D, 0x05,                 /* idVendor = 0x051D (APC) */
-  0x02, 0x00,                 /* idProduct = 0x0002 (BK650M2-CH) */
-  0x00, 0x01,                 /* bcdDevice = 1.00 */
-  0x01,                       /* iManufacturer */
-  0x02,                       /* iProduct */
-  0x03,                       /* iSerialNumber */
-  0x01                        /* bNumConfigurations */
+__ALIGN_BEGIN uint8_t USBD_FS_DeviceDesc[USB_LEN_DEV_DESC] __ALIGN_END = {
+  0x12,                       /*bLength */
+  USB_DESC_TYPE_DEVICE,       /*bDescriptorType*/
+  LOBYTE(USBD_BCD_USB),       /*bcdUSB */
+  HIBYTE(USBD_BCD_USB),
+  0x00,                       /*bDeviceClass*/
+  0x00,                       /*bDeviceSubClass*/
+  0x00,                       /*bDeviceProtocol*/
+  USB_MAX_EP0_SIZE,           /*bMaxPacketSize*/
+  LOBYTE(USBD_VID),           /*idVendor*/
+  HIBYTE(USBD_VID),           /*idVendor*/
+  LOBYTE(USBD_PID_FS),        /*idProduct*/
+  HIBYTE(USBD_PID_FS),        /*idProduct*/
+  LOBYTE(USBD_BCD_DEVICE),    /*bcdDevice*/
+  HIBYTE(USBD_BCD_DEVICE),
+  USBD_IDX_MFC_STR,           /*Index of manufacturer  string*/
+  USBD_IDX_PRODUCT_STR,       /*Index of product string*/
+  USBD_IDX_SERIAL_STR,        /*Index of serial number string*/
+  USBD_MAX_NUM_CONFIGURATION  /*bNumConfigurations*/
 };
+
 
 
 /* USB_DeviceDescriptor */
