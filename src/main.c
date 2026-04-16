@@ -36,10 +36,10 @@ int main(void)
 
   while (1)
   {
-    // ========== 关键修改：2字节报告（匹配APC协议） ==========
+    // ========== 关键修改：2字节报告（不包含Report ID） ==========
     uint8_t ups_report[2] = {0};
     ups_report[0] = 0b00000011;  // Bit0=市电在线, Bit1=无故障, Bit2=电池正常（低3位）
-    ups_report[1] = 85;          // 电量85%（第2字节）
+    ups_report[1] = 100;         // 电量100%（第2字节）
 
     // Custom HID标准上报函数（长度改为2）
     USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, ups_report, 2);

@@ -1,6 +1,6 @@
 #include "usbd_custom_hid_if.h"
 
-// APC BK650M2-CH 原厂标准HID报告描述符 (39字节)
+// APC BK650M2-CH 原厂标准HID报告描述符 (52字节)
 __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[] __ALIGN_END =
 {
     0x05, 0x84, 0x09, 0x04, 0xA1, 0x01, 0x85, 0x01,
