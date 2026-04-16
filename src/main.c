@@ -36,19 +36,18 @@ int main(void)
 
   while (1)
   {
-    // 修复数组越界：uint8_t ups_report[4] → 索引0/1/2/3
-    uint8_t ups_report[4] = {0x01};
-    ups_report[1] = 0b00000011;  // AC在线+电池已连接
-    ups_report[2] = 85;          // 电量85%
-    ups_report[3] = 0x00;        // 运行时间(16位合并为0)
+    // ========== 关键修改：2字节报告（匹配APC协议） ==========
+    uint8_t ups_report[2] = {0};
+    ups_report[0] = 0b00000011;  // Bit0=市电在线, Bit1=无故障, Bit2=电池正常（低3位）
+    ups_report[1] = 85;          // 电量85%（第2字节）
 
-    // Custom HID标准上报函数
-    USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, ups_report, 4);
+    // Custom HID标准上报函数（长度改为2）
+    USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, ups_report, 2);
     HAL_Delay(1000);
   }
 }
 
-/* 你原始正确的时钟配置（完全保留） */
+/* 保留原有时钟配置/错误处理函数（无需修改） */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
