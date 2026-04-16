@@ -308,7 +308,7 @@ uint8_t * USBD_FS_InterfaceStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *leng
   * @param  None
   * @retval None
   */
-static void Get_SerialNum(void)
+static __attribute__((unused)) void Get_SerialNum(void)
 {
   // 禁用自动序列号，使用固定值
 }
@@ -320,7 +320,7 @@ static void Get_SerialNum(void)
   * @param  len: buffer length
   * @retval None
   */
-static void IntToUnicode(uint32_t value, uint8_t * pbuf, uint8_t len)
+static __attribute__((unused)) void IntToUnicode(uint32_t value, uint8_t * pbuf, uint8_t len)
 {
 
 }
