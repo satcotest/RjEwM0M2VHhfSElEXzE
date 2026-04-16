@@ -30,7 +30,7 @@
 #include "usbd_customhid.h"
 
 /* USER CODE BEGIN INCLUDE */
-#include <stdint.h>  // 补充uint8_t等类型定义
+
 /* USER CODE END INCLUDE */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -49,6 +49,7 @@
   */
 
 /* USER CODE BEGIN EXPORTED_DEFINES */
+/* 已在usbd_conf.h定义，此处删除，解决重定义！ */
 /* USER CODE END EXPORTED_DEFINES */
 
 /**
@@ -61,24 +62,7 @@
   */
 
 /* USER CODE BEGIN EXPORTED_TYPES */
-// APC BK650M2-CH UPS HID输入报告结构体（STM32→主机，2字节）
-typedef struct {
-    union {
-        uint8_t status_byte;  // 低3位=状态位，高5位=保留（固定0）
-        struct {
-            uint8_t mains_on    : 1; // Bit0: 1=市电正常, 0=市电断开
-            uint8_t fault       : 1; // Bit1: 1=故障, 0=无故障
-            uint8_t battery_low : 1; // Bit2: 1=电池低, 0=电池正常
-            uint8_t reserved    : 5; // Bit3~7: 保留位，固定为0
-        } status_bits;
-    };
-    uint8_t percentage;        // Byte1: 电池电量/负载百分比（0~100）
-} APC_UPS_InputReport_t;
 
-// APC BK650M2-CH UPS HID输出报告结构体（主机→STM32，1字节）
-typedef struct {
-    uint8_t cmd;               // 指令码：0=无指令, 1=自检, 2=关机, 3=查询状态
-} APC_UPS_OutputReport_t;
 /* USER CODE END EXPORTED_TYPES */
 
 /**
@@ -91,6 +75,7 @@ typedef struct {
   */
 
 /* USER CODE BEGIN EXPORTED_MACRO */
+
 /* USER CODE END EXPORTED_MACRO */
 
 /**
@@ -106,8 +91,7 @@ typedef struct {
 extern USBD_CUSTOM_HID_ItfTypeDef USBD_CustomHID_fops_FS;
 
 /* USER CODE BEGIN EXPORTED_VARIABLES */
-// 全局UPS状态变量（仅声明，定义在.c文件中）
-extern APC_UPS_InputReport_t apc_ups_status;
+
 /* USER CODE END EXPORTED_VARIABLES */
 
 /**
@@ -120,8 +104,7 @@ extern APC_UPS_InputReport_t apc_ups_status;
   */
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-// 自定义函数：向主机上报UPS状态（返回值：USBD_OK/USBD_FAIL）
-uint8_t APC_UPS_SendStatus(void);
+
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**
