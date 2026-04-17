@@ -114,6 +114,9 @@ static uint8_t  USBD_CUSTOM_HID_EP0_RxReady(USBD_HandleTypeDef  *pdev);
   * @{
   */
 
+static uint8_t USBD_CUSTOM_HID_InReportBuf[64];
+static uint16_t USBD_CUSTOM_HID_InReportLen = 0;
+
 USBD_ClassTypeDef  USBD_CUSTOM_HID =
 {
   USBD_CUSTOM_HID_Init,
@@ -176,7 +179,7 @@ __ALIGN_BEGIN static uint8_t USBD_CUSTOM_HID_CfgFSDesc[USB_CUSTOM_HID_CONFIG_DES
 
   CUSTOM_HID_EPIN_ADDR,     /*bEndpointAddress: Endpoint Address (IN)*/
   0x03,          /*bmAttributes: Interrupt endpoint*/
-  CUSTOM_HID_EPIN_SIZE, /*wMaxPacketSize: 2 Byte max */
+  CUSTOM_HID_EPIN_SIZE, /*wMaxPacketSize: 4 Byte max */
   0x00,
   CUSTOM_HID_FS_BINTERVAL,          /*bInterval: Polling Interval */
   /* 34 */
@@ -185,7 +188,7 @@ __ALIGN_BEGIN static uint8_t USBD_CUSTOM_HID_CfgFSDesc[USB_CUSTOM_HID_CONFIG_DES
   USB_DESC_TYPE_ENDPOINT, /* bDescriptorType: */
   CUSTOM_HID_EPOUT_ADDR,  /*bEndpointAddress: Endpoint Address (OUT)*/
   0x03, /* bmAttributes: Interrupt endpoint */
-  CUSTOM_HID_EPOUT_SIZE,  /* wMaxPacketSize: 2 Bytes max  */
+  CUSTOM_HID_EPOUT_SIZE,  /* wMaxPacketSize: 4 Bytes max  */
   0x00,
   CUSTOM_HID_FS_BINTERVAL,  /* bInterval: Polling Interval */
   /* 41 */
@@ -235,7 +238,7 @@ __ALIGN_BEGIN static uint8_t USBD_CUSTOM_HID_CfgHSDesc[USB_CUSTOM_HID_CONFIG_DES
 
   CUSTOM_HID_EPIN_ADDR,     /*bEndpointAddress: Endpoint Address (IN)*/
   0x03,          /*bmAttributes: Interrupt endpoint*/
-  CUSTOM_HID_EPIN_SIZE, /*wMaxPacketSize: 2 Byte max */
+  CUSTOM_HID_EPIN_SIZE, /*wMaxPacketSize: 4 Byte max */
   0x00,
   CUSTOM_HID_HS_BINTERVAL,          /*bInterval: Polling Interval */
   /* 34 */
@@ -244,7 +247,7 @@ __ALIGN_BEGIN static uint8_t USBD_CUSTOM_HID_CfgHSDesc[USB_CUSTOM_HID_CONFIG_DES
   USB_DESC_TYPE_ENDPOINT, /* bDescriptorType: */
   CUSTOM_HID_EPOUT_ADDR,  /*bEndpointAddress: Endpoint Address (OUT)*/
   0x03, /* bmAttributes: Interrupt endpoint */
-  CUSTOM_HID_EPOUT_SIZE,  /* wMaxPacketSize: 2 Bytes max  */
+  CUSTOM_HID_EPOUT_SIZE,  /* wMaxPacketSize: 4 Bytes max  */
   0x00,
   CUSTOM_HID_HS_BINTERVAL,  /* bInterval: Polling Interval */
   /* 41 */
@@ -294,7 +297,7 @@ __ALIGN_BEGIN static uint8_t USBD_CUSTOM_HID_OtherSpeedCfgDesc[USB_CUSTOM_HID_CO
 
   CUSTOM_HID_EPIN_ADDR,     /*bEndpointAddress: Endpoint Address (IN)*/
   0x03,          /*bmAttributes: Interrupt endpoint*/
-  CUSTOM_HID_EPIN_SIZE, /*wMaxPacketSize: 2 Byte max */
+  CUSTOM_HID_EPIN_SIZE, /*wMaxPacketSize: 4 Byte max */
   0x00,
   CUSTOM_HID_FS_BINTERVAL,          /*bInterval: Polling Interval */
   /* 34 */
@@ -303,7 +306,7 @@ __ALIGN_BEGIN static uint8_t USBD_CUSTOM_HID_OtherSpeedCfgDesc[USB_CUSTOM_HID_CO
   USB_DESC_TYPE_ENDPOINT, /* bDescriptorType: */
   CUSTOM_HID_EPOUT_ADDR,  /*bEndpointAddress: Endpoint Address (OUT)*/
   0x03, /* bmAttributes: Interrupt endpoint */
-  CUSTOM_HID_EPOUT_SIZE,  /* wMaxPacketSize: 2 Bytes max  */
+  CUSTOM_HID_EPOUT_SIZE,  /* wMaxPacketSize: 4 Bytes max  */
   0x00,
   CUSTOM_HID_FS_BINTERVAL,  /* bInterval: Polling Interval */
   /* 41 */
@@ -463,6 +466,19 @@ static uint8_t  USBD_CUSTOM_HID_Setup(USBD_HandleTypeDef *pdev,
           USBD_CtlPrepareRx(pdev, hhid->Report_buf, req->wLength);
           break;
 
+        case CUSTOM_HID_REQ_GET_REPORT:
+          if (USBD_CUSTOM_HID_InReportLen > 0U)
+          {
+            USBD_CtlSendData(pdev, USBD_CUSTOM_HID_InReportBuf,
+                             MIN(USBD_CUSTOM_HID_InReportLen, req->wLength));
+          }
+          else
+          {
+            USBD_CtlError(pdev, req);
+            ret = USBD_FAIL;
+          }
+          break;
+
         default:
           USBD_CtlError(pdev, req);
           ret = USBD_FAIL;
@@ -554,6 +570,15 @@ uint8_t USBD_CUSTOM_HID_SendReport(USBD_HandleTypeDef  *pdev,
                                    uint16_t len)
 {
   USBD_CUSTOM_HID_HandleTypeDef     *hhid = (USBD_CUSTOM_HID_HandleTypeDef *)pdev->pClassData;
+
+  if (len <= sizeof(USBD_CUSTOM_HID_InReportBuf))
+  {
+    for (uint16_t i = 0; i < len; i++)
+    {
+      USBD_CUSTOM_HID_InReportBuf[i] = report[i];
+    }
+    USBD_CUSTOM_HID_InReportLen = len;
+  }
 
   if (pdev->dev_state == USBD_STATE_CONFIGURED)
   {
