@@ -388,10 +388,9 @@ static uint8_t  USBD_CUSTOM_HID_Init(USBD_HandleTypeDef *pdev,
     hhid->state = CUSTOM_HID_IDLE;
     ((USBD_CUSTOM_HID_ItfTypeDef *)pdev->pUserData)->Init();
 
-    USBD_CUSTOM_HID_InReportBuf[0] = 0x01;
-    USBD_CUSTOM_HID_InReportBuf[1] = 0b00000101;
-    USBD_CUSTOM_HID_InReportBuf[2] = 100;
-    USBD_CUSTOM_HID_InReportLen = 3;
+    USBD_CUSTOM_HID_InReportBuf[0] = 0b00000101;
+    USBD_CUSTOM_HID_InReportBuf[1] = 100;
+    USBD_CUSTOM_HID_InReportLen = 2;
 
     USBD_LL_PrepareReceive(pdev, CUSTOM_HID_EPOUT_ADDR, hhid->Report_buf,
                            USBD_CUSTOMHID_OUTREPORT_BUF_SIZE);

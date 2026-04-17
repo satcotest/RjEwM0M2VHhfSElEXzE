@@ -36,14 +36,13 @@ int main(void)
 
   while (1)
   {
-    // ========== 关键修改：3字节报告（包含Report ID） ==========
-    uint8_t ups_report[3] = {0};
-    ups_report[0] = 0x01;        // Report ID
-    ups_report[1] = 0b00000101;  // Bit0=ACPresent(1), Bit1=Discharging(0), Bit2=PresentStatus(1)
-    ups_report[2] = 100;         // RemainingCapacity = 100%
+    // ========== 关键修改：2字节报告（不包含Report ID） ==========
+    uint8_t ups_report[2] = {0};
+    ups_report[0] = 0b00000101;  // Bit0=ACPresent(1), Bit1=Discharging(0), Bit2=PresentStatus(1)
+    ups_report[1] = 100;         // RemainingCapacity = 100%
 
-    // Custom HID标准上报函数（长度改为3）
-    USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, ups_report, 3);
+    // Custom HID标准上报函数（长度改为2）
+    USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, ups_report, 2);
     HAL_Delay(1000);
   }
 }
