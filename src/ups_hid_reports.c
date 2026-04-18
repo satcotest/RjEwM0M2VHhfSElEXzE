@@ -156,7 +156,7 @@ uint16_t build_hid_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t r
             .run_time_to_empty_s = g_battery.run_time_to_empty_s,
             .remaining_time_limit_s = g_battery.remaining_time_limit_s,
             .i_device_chemistry = g_power_summary.i_device_chemistry,
-            .capacity_mode = 2U,
+            .capacity_mode = g_power_summary.capacity_mode,
             .full_charge_capacity = g_power_summary.full_charge_capacity,
             .design_capacity = g_power_summary.design_capacity,
             .rechargeable_and_padding = (uint8_t)(g_power_summary.rechargeable ? 0x01U : 0x00U),
