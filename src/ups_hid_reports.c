@@ -145,6 +145,7 @@ uint16_t build_hid_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t r
     case REPORT_ID_POWER_SUMMARY:
     {
         uint16_t const needed = (uint16_t)sizeof(ups_report_power_summary_feature_t);
+        // 修复：Windows 请求 18 字节（包含 Report ID），所以 reqlen 应该 >= needed
         if (reqlen < needed)
         {
             return 0U;
@@ -171,6 +172,7 @@ uint16_t build_hid_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t r
         memcpy(buffer, &report, sizeof(report));
         return (uint16_t)sizeof(report);
     }
+    break;
     case REPORT_ID_INPUT:
     {
         uint16_t const needed = (uint16_t)sizeof(ups_report_input_feature_t);
@@ -188,6 +190,7 @@ uint16_t build_hid_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t r
         memcpy(buffer, &report, sizeof(report));
         return (uint16_t)sizeof(report);
     }
+    break;
     case REPORT_ID_OUTPUT:
     {
         uint16_t const needed = (uint16_t)sizeof(ups_report_output_feature_t);
@@ -206,6 +209,7 @@ uint16_t build_hid_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t r
         memcpy(buffer, &report, sizeof(report));
         return (uint16_t)sizeof(report);
     }
+    break;
     case REPORT_ID_BATTERY:
     {
         uint16_t const needed = (uint16_t)sizeof(ups_report_battery_feature_t);
@@ -225,6 +229,7 @@ uint16_t build_hid_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t r
         memcpy(buffer, &report, sizeof(report));
         return (uint16_t)sizeof(report);
     }
+    break;
     default:
         break;
     }
