@@ -471,7 +471,8 @@ static uint8_t  USBD_CUSTOM_HID_Setup(USBD_HandleTypeDef *pdev,
           break;
 
         case CUSTOM_HID_REQ_GET_REPORT:
-          // 处理Feature Report请求（wValue=0x0301）
+        {
+          // 处理Feature Report请求（包含Report ID）
           if (USBD_CUSTOM_HID_InReportLen > 0U)
           {
             USBD_CtlSendData(pdev, USBD_CUSTOM_HID_InReportBuf,
@@ -484,6 +485,7 @@ static uint8_t  USBD_CUSTOM_HID_Setup(USBD_HandleTypeDef *pdev,
             USBD_CtlSendData(pdev, default_report, MIN(3, req->wLength));
           }
           break;
+        }
 
         default:
           USBD_CtlError(pdev, req);

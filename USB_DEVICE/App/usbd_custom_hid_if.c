@@ -1,6 +1,6 @@
 #include "usbd_custom_hid_if.h"
 
-// Windows UPS驱动兼容的HID报告描述符 - 使用Feature Report (0xB1)
+// 能枚举的版本 - 使用Report ID 0x01和Feature Report
 __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[] __ALIGN_END =
 {
     0x05, 0x84,                    /* USAGE_PAGE (Power Device) */

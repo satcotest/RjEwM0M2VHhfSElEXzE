@@ -62,14 +62,14 @@
   * @{
   */
 
-#define USBD_VID           0x051D
-#define USBD_PID_FS        0x0002
+#define USBD_VID           0x0483
+#define USBD_PID_FS        0x5750
 #define USBD_LANGID_STRING           0x0409
-#define USBD_BCD_DEVICE    0x0106
+#define USBD_BCD_DEVICE    0x0100
 #define USBD_BCD_USB       0x0200
-#define USBD_MANUFACTURER_STRING     "American Power Conversion"
-#define USBD_PRODUCT_STRING_FS       "Back-UPS BK650M2-CH FW:294803G -292804G"
-#define USBD_SERIAL_STRING_FS        "9B2216A17431"
+#define USBD_MANUFACTURER_STRING     "STMicroelectronics"
+#define USBD_PRODUCT_STRING_FS       "STM32 HID UPS"
+#define USBD_SERIAL_STRING_FS        "00000000001A"
 #define USBD_CONFIGURATION_STRING_FS "HID UPS Config"
 #define USBD_INTERFACE_STRING_FS     "HID UPS Interface"
 /* USER CODE BEGIN PRIVATE_DEFINES */

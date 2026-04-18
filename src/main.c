@@ -36,7 +36,7 @@ int main(void)
 
   while (1)
   {
-    // ========== 关键修改：3字节报告（包含Report ID） ==========
+    // ========== 能枚举的版本：3字节报告（包含Report ID） ==========
     uint8_t ups_report[3] = {0};
     ups_report[0] = 0x01;        // Report ID (必须包含，因为报告描述符有0x85 0x01)
     ups_report[1] = 0b00000101;  // Bit0=ACPresent(1), Bit1=Discharging(0), Bit2=PresentStatus(1)
