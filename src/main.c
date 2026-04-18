@@ -29,7 +29,7 @@ ups_present_status_t g_power_summary_present_status = {
 
 ups_summary_t g_power_summary = {
     .rechargeable = true,
-    .capacity_mode = 0U,
+    .capacity_mode = 2U,
     .design_capacity = 100U,
     .full_charge_capacity = 100U,
     .warning_capacity_limit = 20U,
