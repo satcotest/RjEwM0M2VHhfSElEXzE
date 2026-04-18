@@ -35,7 +35,7 @@
  *   [MSB]         HID | MSC | CDC          [LSB]
  */
 #define PID_MAP(itf, n) ((CFG_TUD_##itf) ? (1 << (n)) : 0)
-#define USB_PID 0x0002
+#define USB_PID 0xCAFE
 #define USB_VID 0x051d
 #define USB_BCD 0x0200
 

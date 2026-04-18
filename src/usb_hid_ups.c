@@ -19,10 +19,9 @@ static void reset_hid_timing_state(void)
 
 void ups_hid_periodic_task(void)
 {
-    // Both Linux and Windows rely on GET_REPORT to do the polling job.
-    // The interrupt IN report is a heartbeat to let the host know the device is alive.
+    // Send Input Report more frequently for Windows battery display
     uint32_t const now_ms = HAL_GetTick();
-    if ((now_ms - hid_last_report_ms) < 5000U)
+    if ((now_ms - hid_last_report_ms) < 1000U)  // Changed from 5000ms to 1000ms
     {
         return;
     }

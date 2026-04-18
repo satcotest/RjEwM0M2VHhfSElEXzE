@@ -17,7 +17,7 @@ static bool s_usb_dp_held_low = false;
 /* UPS 状态变量（固定0%电量） */
 ups_present_status_t g_power_summary_present_status = {
     .ac_present = true,
-    .charging = false,
+    .charging = true,
     .discharging = false,
     .fully_charged = false,
     .need_replacement = false,
@@ -29,7 +29,7 @@ ups_present_status_t g_power_summary_present_status = {
 
 ups_summary_t g_power_summary = {
     .rechargeable = true,
-    .capacity_mode = 2U,
+    .capacity_mode = 0U,
     .design_capacity = 100U,
     .full_charge_capacity = 100U,
     .warning_capacity_limit = 20U,
@@ -47,11 +47,11 @@ ups_battery_t g_battery = {
     .battery_voltage = 0,
     .battery_current = 0,
     .config_voltage = 0,
-    .run_time_to_empty_s = 0,
+    .run_time_to_empty_s = 3600,
     .remaining_time_limit_s = 120,
     .temperature = 0,
     .manufacturer_date = 0,
-    .remaining_capacity = 0,
+    .remaining_capacity = 50,
 };
 
 ups_input_t g_input = {
