@@ -388,9 +388,10 @@ static uint8_t  USBD_CUSTOM_HID_Init(USBD_HandleTypeDef *pdev,
     hhid->state = CUSTOM_HID_IDLE;
     ((USBD_CUSTOM_HID_ItfTypeDef *)pdev->pUserData)->Init();
 
-    USBD_CUSTOM_HID_InReportBuf[0] = 0b00000101;
-    USBD_CUSTOM_HID_InReportBuf[1] = 100;
-    USBD_CUSTOM_HID_InReportLen = 2;
+    USBD_CUSTOM_HID_InReportBuf[0] = 0x01;
+    USBD_CUSTOM_HID_InReportBuf[1] = 0b00000101;
+    USBD_CUSTOM_HID_InReportBuf[2] = 100;
+    USBD_CUSTOM_HID_InReportLen = 3;
 
     USBD_LL_PrepareReceive(pdev, CUSTOM_HID_EPOUT_ADDR, hhid->Report_buf,
                            USBD_CUSTOMHID_OUTREPORT_BUF_SIZE);
@@ -470,6 +471,7 @@ static uint8_t  USBD_CUSTOM_HID_Setup(USBD_HandleTypeDef *pdev,
           break;
 
         case CUSTOM_HID_REQ_GET_REPORT:
+          // 处理Feature Report请求（wValue=0x0301）
           if (USBD_CUSTOM_HID_InReportLen > 0U)
           {
             USBD_CtlSendData(pdev, USBD_CUSTOM_HID_InReportBuf,
@@ -477,8 +479,9 @@ static uint8_t  USBD_CUSTOM_HID_Setup(USBD_HandleTypeDef *pdev,
           }
           else
           {
-            USBD_CtlError(pdev, req);
-            ret = USBD_FAIL;
+            // 即使缓冲区为空，也返回默认的100%电量数据（包含Report ID）
+            uint8_t default_report[3] = {0x01, 0b00000101, 100};
+            USBD_CtlSendData(pdev, default_report, MIN(3, req->wLength));
           }
           break;
 
