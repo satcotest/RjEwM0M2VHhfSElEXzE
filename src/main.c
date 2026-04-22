@@ -14,12 +14,16 @@ void Error_Handler(void);
 /* USB D+ 上拉模拟变量 */
 static bool s_usb_dp_held_low = false;
 
-/* UPS 状态变量（固定0%电量） */
+/* UPS 状态变量 - APC 原厂格式
+ * 状态字节 0x0C = 0000 1100:
+ *   bit2: 1 = 市电正常/充电中
+ *   bit3: 1 = 无故障/正常状态
+ */
 ups_present_status_t g_power_summary_present_status = {
     .ac_present = true,
     .charging = true,
     .discharging = false,
-    .fully_charged = false,
+    .fully_charged = true,
     .need_replacement = false,
     .below_remaining_capacity_limit = false,
     .battery_present = true,
@@ -51,7 +55,7 @@ ups_battery_t g_battery = {
     .remaining_time_limit_s = 120,
     .temperature = 0,
     .manufacturer_date = 0,
-    .remaining_capacity = 50,
+    .remaining_capacity = 100,  // APC 原厂格式: 100% = 0x64
 };
 
 ups_input_t g_input = {

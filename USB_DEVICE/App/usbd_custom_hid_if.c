@@ -1,35 +1,45 @@
 #include "usbd_custom_hid_if.h"
 
-// 能枚举的版本 - 使用Report ID 0x01和Feature Report
+// APC UPS 原厂格式 Report Descriptor
+// Report ID 0x0C: 电量报告 (2字节: 0C 64)
+// Report ID 0x16: 状态报告 (3字节: 16 0C 00)
 __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[] __ALIGN_END =
 {
-    0x05, 0x84,                    /* USAGE_PAGE (Power Device) */
-    0x09, 0x04,                    /* USAGE (UPS) */
-    0xA1, 0x01,                    /* COLLECTION (Application) */
-    0x09, 0x1D,                    /*   USAGE (Device State) */
-    0xA1, 0x02,                    /*   COLLECTION (Logical) */
-    0x85, 0x01,                    /*     REPORT_ID (1) */
-    0x09, 0xD1,                    /*     USAGE (Status Flags) */
-    0xA1, 0x02,                    /*     COLLECTION (Logical) */
-    0x09, 0xD0,                    /*       USAGE (AC Present) */
-    0x09, 0xDD,                    /*       USAGE (Discharging) */
-    0x09, 0x42,                    /*       USAGE (Present Status) */
-    0x15, 0x00,                    /*       LOGICAL_MINIMUM (0) */
-    0x25, 0x01,                    /*       LOGICAL_MAXIMUM (1) */
-    0x75, 0x01,                    /*       REPORT_SIZE (1) */
-    0x95, 0x03,                    /*       REPORT_COUNT (3) */
-    0xB1, 0x02,                    /*       FEATURE (Data,Var,Abs) */
-    0x95, 0x05,                    /*       REPORT_COUNT (5) */
-    0xB1, 0x03,                    /*       FEATURE (Cnst,Var,Abs) */
-    0xC0,                          /*     END_COLLECTION */
-    0x09, 0x66,                    /*     USAGE (Remaining Capacity) */
-    0x15, 0x00,                    /*     LOGICAL_MINIMUM (0) */
-    0x26, 0x64, 0x00,              /*     LOGICAL_MAXIMUM (100) */
-    0x75, 0x08,                    /*     REPORT_SIZE (8) */
-    0x95, 0x01,                    /*     REPORT_COUNT (1) */
-    0xB1, 0x02,                    /*     FEATURE (Data,Var,Abs) */
-    0xC0,                          /*   END_COLLECTION */
-    0xC0                           /* END_COLLECTION */
+    // Power Device Page
+    0x05, 0x84,  // USAGE_PAGE (Power Device)
+    0x09, 0x04,  // USAGE (UPS)
+    0xA1, 0x01,  // COLLECTION (Application)
+
+    // Report ID 0x0C - 电量报告
+    0x85, 0x0C,  //   REPORT_ID (0x0C)
+    0x09, 0x66,  //   USAGE (Remaining Capacity)
+    0x15, 0x00,  //   LOGICAL_MINIMUM (0)
+    0x26, 0x64, 0x00,  //   LOGICAL_MAXIMUM (100)
+    0x75, 0x08,  //   REPORT_SIZE (8)
+    0x95, 0x01,  //   REPORT_COUNT (1)
+    0x81, 0x02,  //   INPUT (Data,Var,Abs)
+
+    // Report ID 0x16 - 状态报告
+    0x85, 0x16,  //   REPORT_ID (0x16)
+    0x09, 0x6B,  //   USAGE (Present Status)
+    0xA1, 0x02,  //   COLLECTION (Logical)
+    0x09, 0xD0,  //     USAGE (AC Present)
+    0x09, 0x44,  //     USAGE (Charging)
+    0x09, 0x45,  //     USAGE (Discharging)
+    0x09, 0x46,  //     USAGE (Fully Charged)
+    0x09, 0x4B,  //     USAGE (Need Replacement)
+    0x09, 0x42,  //     USAGE (Below Remaining Capacity Limit)
+    0x09, 0x4D,  //     USAGE (Battery Present)
+    0x09, 0x73,  //     USAGE (Overload)
+    0x15, 0x00,  //     LOGICAL_MINIMUM (0)
+    0x25, 0x01,  //     LOGICAL_MAXIMUM (1)
+    0x75, 0x01,  //     REPORT_SIZE (1)
+    0x95, 0x08,  //     REPORT_COUNT (8)
+    0x81, 0x02,  //     INPUT (Data,Var,Abs)
+    0xC0,        //   END_COLLECTION
+    0x81, 0x01,  //   INPUT (Const) - 填充到16位对齐
+
+    0xC0         // END_COLLECTION
 };
 
 // 空实现（和CubeMX默认一致），无任何多余变量

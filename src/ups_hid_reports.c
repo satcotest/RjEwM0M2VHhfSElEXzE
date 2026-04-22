@@ -8,97 +8,105 @@
 #include <stdio.h>
 #include <string.h>
 
-// HID payload report layouts (do not include Report ID byte; TinyUSB prepends it).
+// APC UPS 原厂数据包格式
+// Report ID 0x0C: 电量报告 (2字节: ReportID + 电量百分比)
+// Report ID 0x16: 状态报告 (3字节: ReportID + 状态字节1 + 状态字节2)
+
+// 电量报告结构 (不包含 Report ID)
 typedef struct TU_ATTR_PACKED
 {
-    uint8_t remaining_capacity;
-    uint16_t run_time_to_empty_s;
-    uint16_t ps_voltage;
-    uint16_t present_status_bits;
-} ups_report_power_summary_input_t;
+    uint8_t remaining_capacity;  // 电量百分比 0-100
+} apc_battery_report_t;
 
+// 状态报告结构 (不包含 Report ID)
 typedef struct TU_ATTR_PACKED
 {
-    uint8_t warning_capacity_limit;
-    uint8_t remaining_capacity_limit;
-    uint8_t remaining_capacity;
-    uint16_t run_time_to_empty_s;
-    uint16_t remaining_time_limit_s;
-    uint8_t i_device_chemistry;
-    uint8_t capacity_mode;
-    uint8_t full_charge_capacity;
-    uint8_t design_capacity;
-    uint8_t rechargeable_and_padding;
-    uint8_t capacity_granularity_1;
-    uint8_t capacity_granularity_2;
-    uint8_t i_strings_packed;
-    uint16_t present_status_bits;
-} ups_report_power_summary_feature_t;
+    uint8_t status_byte1;  // 主要状态位
+    uint8_t status_byte2;  // 扩展状态位
+} apc_status_report_t;
 
-typedef struct TU_ATTR_PACKED
-{
-    uint16_t input_voltage;
-    uint16_t input_frequency;
-    uint16_t config_voltage;
-    uint16_t low_voltage_transfer;
-    uint16_t high_voltage_transfer;
-} ups_report_input_feature_t;
+// 定义 Report ID (APC 原厂格式)
+#define APC_REPORT_ID_BATTERY     0x0C  // 电量报告
+#define APC_REPORT_ID_STATUS      0x16  // 状态报告
 
-typedef struct TU_ATTR_PACKED
+// 构建 APC 原厂格式的电量报告
+// 数据包: 0C 64 (ReportID=0x0C, 电量=100%)
+static uint16_t build_apc_battery_report(uint8_t *buffer, uint16_t reqlen)
 {
-    uint8_t percent_load;
-    uint16_t config_active_power;
-    uint16_t config_voltage;
-    uint16_t output_voltage;
-    int16_t output_current;
-    uint16_t output_frequency;
-} ups_report_output_feature_t;
-
-typedef struct TU_ATTR_PACKED
-{
-    uint16_t run_time_to_empty_s;
-    uint16_t remaining_time_limit_s;
-    uint16_t manufacturer_date;
-    uint16_t battery_voltage;
-    int16_t battery_current;
-    uint16_t config_voltage;
-    uint16_t temperature;
-} ups_report_battery_feature_t;
-
-static inline uint8_t pack_2bit4(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
-{
-    return (uint8_t)(((a & 0x03U) << 0) |
-                     ((b & 0x03U) << 2) |
-                     ((c & 0x03U) << 4) |
-                     ((d & 0x03U) << 6));
-}
-
-static uint16_t pack_present_status(const ups_present_status_t *status)
-{
-    if (status == NULL)
+    if ((buffer == NULL) || (reqlen < 1))
     {
         return 0U;
     }
-    uint16_t bits = 0U;
-    if (status->ac_present)
-        bits |= (1U << 0);
-    if (status->charging)
-        bits |= (1U << 1);
-    if (status->discharging)
-        bits |= (1U << 2);
-    if (status->fully_charged)
-        bits |= (1U << 3);
-    if (status->need_replacement)
-        bits |= (1U << 4);
-    if (status->below_remaining_capacity_limit)
-        bits |= (1U << 5);
-    if (status->battery_present)
-        bits |= (1U << 6);
-    if (status->overload)
-        bits |= (1U << 7);
-    if (status->shutdown_imminent)
-        bits |= (1U << 8);
-    return bits;
+
+    apc_battery_report_t report = {
+        .remaining_capacity = g_battery.remaining_capacity,  // 电量百分比
+    };
+
+    memcpy(buffer, &report, sizeof(report));
+    return (uint16_t)sizeof(report);
+}
+
+// 构建 APC 原厂格式的状态报告
+// 数据包: 16 0C 00 (ReportID=0x16, 状态1=0x0C, 状态2=0x00)
+// 状态字节1 (0x0C = 0000 1100):
+//   bit2: 1 = 市电正常/充电中
+//   bit3: 1 = 无故障/正常状态
+static uint16_t build_apc_status_report(uint8_t *buffer, uint16_t reqlen)
+{
+    if ((buffer == NULL) || (reqlen < 2))
+    {
+        return 0U;
+    }
+
+    // 构建状态字节
+    uint8_t status1 = 0x00;
+
+    // bit0: AC Present (市电接入)
+    if (g_power_summary_present_status.ac_present)
+        status1 |= (1U << 0);
+
+    // bit1: Charging (充电中)
+    if (g_power_summary_present_status.charging)
+        status1 |= (1U << 1);
+
+    // bit2: Discharging (放电中) - 通常市电正常时为0
+    if (g_power_summary_present_status.discharging)
+        status1 |= (1U << 2);
+
+    // bit3: Fully Charged (已充满)
+    if (g_power_summary_present_status.fully_charged)
+        status1 |= (1U << 3);
+
+    // bit4: Need Replacement (需要更换电池)
+    if (g_power_summary_present_status.need_replacement)
+        status1 |= (1U << 4);
+
+    // bit5: Below Remaining Capacity Limit (电量低于限制)
+    if (g_power_summary_present_status.below_remaining_capacity_limit)
+        status1 |= (1U << 5);
+
+    // bit6: Battery Present (电池存在)
+    if (g_power_summary_present_status.battery_present)
+        status1 |= (1U << 6);
+
+    // bit7: Overload (过载)
+    if (g_power_summary_present_status.overload)
+        status1 |= (1U << 7);
+
+    // 默认状态: 市电正常、无故障 = 0x0C
+    // 如果用户没有设置特定状态，使用 APC 原厂默认值
+    if (status1 == 0x00 && g_power_summary_present_status.ac_present)
+    {
+        status1 = 0x0C;  // 市电正常、无故障
+    }
+
+    apc_status_report_t report = {
+        .status_byte1 = status1,
+        .status_byte2 = 0x00,  // 扩展状态，通常为0
+    };
+
+    memcpy(buffer, &report, sizeof(report));
+    return (uint16_t)sizeof(report);
 }
 
 uint16_t build_hid_input_report(uint8_t report_id, uint8_t *buffer, uint16_t reqlen)
@@ -110,22 +118,12 @@ uint16_t build_hid_input_report(uint8_t report_id, uint8_t *buffer, uint16_t req
 
     switch (report_id)
     {
-    case REPORT_ID_POWER_SUMMARY:
-    {
-        uint16_t const needed = (uint16_t)sizeof(ups_report_power_summary_input_t);
-        if (reqlen < needed)
-        {
-            return 0U;
-        }
-        ups_report_power_summary_input_t report = {
-            .remaining_capacity = g_battery.remaining_capacity,
-            .run_time_to_empty_s = g_battery.run_time_to_empty_s,
-            .ps_voltage = g_battery.battery_voltage,
-            .present_status_bits = pack_present_status(&g_power_summary_present_status),
-        };
-        memcpy(buffer, &report, sizeof(report));
-        return (uint16_t)sizeof(report);
-    }
+    case APC_REPORT_ID_BATTERY:  // 0x0C - 电量报告
+        return build_apc_battery_report(buffer, reqlen);
+
+    case APC_REPORT_ID_STATUS:   // 0x16 - 状态报告
+        return build_apc_status_report(buffer, reqlen);
+
     default:
         break;
     }
@@ -135,110 +133,13 @@ uint16_t build_hid_input_report(uint8_t report_id, uint8_t *buffer, uint16_t req
 
 uint16_t build_hid_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t reqlen)
 {
-    if ((buffer == NULL) || (reqlen == 0U))
-    {
-        return 0U;
-    }
-
-    switch (report_id)
-    {
-    case REPORT_ID_POWER_SUMMARY:
-    {
-        uint16_t const needed = (uint16_t)sizeof(ups_report_power_summary_feature_t);
-        // 修复：Windows 请求 18 字节（包含 Report ID），所以 reqlen 应该 >= needed
-        if (reqlen < needed)
-        {
-            return 0U;
-        }
-        ups_report_power_summary_feature_t report = {
-            .warning_capacity_limit = g_power_summary.warning_capacity_limit,
-            .remaining_capacity_limit = g_power_summary.remaining_capacity_limit,
-            .remaining_capacity = g_battery.remaining_capacity,
-            .run_time_to_empty_s = g_battery.run_time_to_empty_s,
-            .remaining_time_limit_s = g_battery.remaining_time_limit_s,
-            .i_device_chemistry = g_power_summary.i_device_chemistry,
-            .capacity_mode = g_power_summary.capacity_mode,
-            .full_charge_capacity = g_power_summary.full_charge_capacity,
-            .design_capacity = g_power_summary.design_capacity,
-            .rechargeable_and_padding = (uint8_t)(g_power_summary.rechargeable ? 0x01U : 0x00U),
-            .capacity_granularity_1 = g_power_summary.capacity_granularity_1,
-            .capacity_granularity_2 = g_power_summary.capacity_granularity_2,
-            .i_strings_packed = pack_2bit4(g_power_summary.i_manufacturer_2bit,
-                                           g_power_summary.i_product_2bit,
-                                           g_power_summary.i_serial_number_2bit,
-                                           g_power_summary.i_name_2bit),
-            .present_status_bits = pack_present_status(&g_power_summary_present_status),
-        };
-        memcpy(buffer, &report, sizeof(report));
-        return (uint16_t)sizeof(report);
-    }
-    break;
-    case REPORT_ID_INPUT:
-    {
-        uint16_t const needed = (uint16_t)sizeof(ups_report_input_feature_t);
-        if (reqlen < needed)
-        {
-            return 0U;
-        }
-        ups_report_input_feature_t report = {
-            .input_voltage = g_input.voltage,
-            .input_frequency = g_input.frequency,
-            .config_voltage = g_input.config_voltage,
-            .low_voltage_transfer = g_input.low_voltage_transfer,
-            .high_voltage_transfer = g_input.high_voltage_transfer,
-        };
-        memcpy(buffer, &report, sizeof(report));
-        return (uint16_t)sizeof(report);
-    }
-    break;
-    case REPORT_ID_OUTPUT:
-    {
-        uint16_t const needed = (uint16_t)sizeof(ups_report_output_feature_t);
-        if (reqlen < needed)
-        {
-            return 0U;
-        }
-        ups_report_output_feature_t report = {
-            .percent_load = g_output.percent_load,
-            .config_active_power = g_output.config_active_power,
-            .config_voltage = g_output.config_voltage,
-            .output_voltage = g_output.voltage,
-            .output_current = g_output.current,
-            .output_frequency = g_output.frequency,
-        };
-        memcpy(buffer, &report, sizeof(report));
-        return (uint16_t)sizeof(report);
-    }
-    break;
-    case REPORT_ID_BATTERY:
-    {
-        uint16_t const needed = (uint16_t)sizeof(ups_report_battery_feature_t);
-        if (reqlen < needed)
-        {
-            return 0U;
-        }
-        ups_report_battery_feature_t report = {
-            .run_time_to_empty_s = g_battery.run_time_to_empty_s,
-            .remaining_time_limit_s = g_battery.remaining_time_limit_s,
-            .manufacturer_date = g_battery.manufacturer_date,
-            .battery_voltage = g_battery.battery_voltage,
-            .battery_current = g_battery.battery_current,
-            .config_voltage = g_battery.config_voltage,
-            .temperature = g_battery.temperature,
-        };
-        memcpy(buffer, &report, sizeof(report));
-        return (uint16_t)sizeof(report);
-    }
-    break;
-    default:
-        break;
-    }
-
-    return 0U;
+    // APC 原厂格式主要使用 Input Report
+    // Feature Report 可以返回相同的数据
+    return build_hid_input_report(report_id, buffer, reqlen);
 }
 
 /*
-  NUT’s date_conversion_reverse() for USB/HID packs a date into a 16‑bit value like this:
+  NUT's date_conversion_reverse() for USB/HID packs a date into a 16-bit value like this:
   bits 15..9: (year - 1980) (7 bits, 0..127)
   bits 8..5: month (4 bits, 1..12)
   bits 4..0: day (5 bits, 1..31)
