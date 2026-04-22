@@ -9,11 +9,14 @@
 #include <stdint.h>
 #include <string.h>
 
-// 全局配置 (在 main.c 中定义)
+// 全局配置
 extern ups_hid_config_t g_ups_config;
 
 static uint32_t hid_last_report_ms;
-static uint8_t hid_report_cycle_index;
+
+// Report ID 定义
+#define REPORT_ID_POWER_SUMMARY 0x01
+#define REPORT_ID_BATTERY       0x02
 
 void ups_hid_periodic_task(void)
 {
@@ -28,32 +31,17 @@ void ups_hid_periodic_task(void)
         return;
     }
 
-    uint8_t buffer[1];
-    uint16_t len;
-
-    // 轮流发送电量报告和状态报告
-    if (hid_report_cycle_index == 0)
+    // 发送 Power Summary Input 报告 (Report ID 1)
+    // 格式: [RemainingCapacity(1)] [RunTimeToEmpty(2)] [Voltage(2)] [Current(2)] [PresentStatus(2)]
+    // 总长度: 9字节
+    uint8_t buffer[16];
+    uint16_t len = build_hid_input_report(REPORT_ID_POWER_SUMMARY, buffer, sizeof(buffer));
+    if (len > 0)
     {
-        // 发送电量报告 (Report ID 0x0C) - 1字节
-        len = build_hid_input_report(APC_REPORT_ID_BATTERY, buffer, sizeof(buffer));
-        if (len > 0)
-        {
-            (void)tud_hid_report(APC_REPORT_ID_BATTERY, buffer, len);
-        }
-    }
-    else
-    {
-        // 发送状态报告 (Report ID 0x16) - 1字节
-        len = build_hid_input_report(APC_REPORT_ID_STATUS, buffer, sizeof(buffer));
-        if (len > 0)
-        {
-            (void)tud_hid_report(APC_REPORT_ID_STATUS, buffer, len);
-        }
+        (void)tud_hid_report(REPORT_ID_POWER_SUMMARY, buffer, len);
     }
 
-    // 无论发送成功与否，都更新时间和切换周期
     hid_last_report_ms = now_ms;
-    hid_report_cycle_index ^= 1;
 }
 
 void tud_hid_set_report_cb(uint8_t instance,

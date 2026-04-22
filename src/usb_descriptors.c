@@ -1,7 +1,11 @@
 #include "tusb.h"
 #include "usb_descriptors.h"
 
-/* A Minimal CDC + HID for MSC mode */
+/*
+ * 通用 HID Power Device (UPS) 实现
+ * 支持 Windows/Linux/群晖/威联通
+ * 参考 STM32_UPS_HID_PowerDevice 和 HIDPowerDevice 项目
+ */
 
 //--------------------------------------------------------------------+
 // Device Descriptors
@@ -16,7 +20,7 @@ tusb_desc_device_t const desc_device =
     .bDeviceProtocol = 0x00,
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
 
-    // APC UPS 原厂 VID/PID
+    // APC UPS 原厂 VID/PID (可修改为通用UPS)
     .idVendor = 0x051D,
     .idProduct = 0x0002,
     .bcdDevice = 0x0106,
@@ -28,8 +32,6 @@ tusb_desc_device_t const desc_device =
     .bNumConfigurations = 0x01
 };
 
-// Invoked when received GET DEVICE DESCRIPTOR
-// Application return pointer to descriptor
 uint8_t const *tud_descriptor_device_cb(void)
 {
     return (uint8_t const *)&desc_device;
@@ -37,116 +39,176 @@ uint8_t const *tud_descriptor_device_cb(void)
 
 //--------------------------------------------------------------------+
 // HID Report Descriptor
-// 基于 APC Back-UPS ES 650 (USB ID 051D:0002) 原厂格式
+// 简化版本 - 确保字节对齐
+// Report ID 1: Power Summary (Input + Feature)
 //--------------------------------------------------------------------+
 
-// HID Report Descriptor
-// 基于 APC Back-UPS ES 650 原厂格式
 uint8_t const desc_hid_report[] =
 {
-    // === Power Device (UPS) ===
+    // === Power Device (UPS) Application Collection ===
     0x05, 0x84,        // USAGE_PAGE (Power Device)
     0x09, 0x04,        // USAGE (UPS)
     0xA1, 0x01,        // COLLECTION (Application)
 
-    // === Power Summary ===
+    // =====================================================
+    // Report ID 1: Power Summary
+    // =====================================================
     0x09, 0x24,        //   USAGE (Power Summary)
     0xA1, 0x02,        //   COLLECTION (Logical)
+    0x85, 0x01,        //     REPORT_ID (1)
 
-    // --- Report ID 0x01: iProduct (Feature) ---
-    0x85, 0x01,        //     REPORT_ID (0x01)
-    0x09, 0xFE,        //     USAGE (iProduct)
-    0x79, 0x02,        //     STRING INDEX (2)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // === INPUT 报告 (实时数据) ===
+    // 所有字段都是 8 位或 16 位，确保字节对齐
 
-    // --- Report ID 0x02: iSerialNumber (Feature) ---
-    0x85, 0x02,        //     REPORT_ID (0x02)
-    0x09, 0xFF,        //     USAGE (iSerialNumber)
-    0x79, 0x03,        //     STRING INDEX (3)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
-
-    // --- Report ID 0x03: iDeviceChemistry (Feature) ---
-    0x85, 0x03,        //     REPORT_ID (0x03)
+    // RemainingCapacity (Input) - 8位百分比
     0x05, 0x85,        //     USAGE_PAGE (Battery System)
-    0x09, 0x89,        //     USAGE (iDeviceChemistry)
-    0x79, 0x04,        //     STRING INDEX (4)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
-
-    // --- Report ID 0x04: iOEMInformation (Feature) ---
-    0x85, 0x04,        //     REPORT_ID (0x04)
-    0x09, 0x8F,        //     USAGE (iOEMInformation)
-    0x79, 0x05,        //     STRING INDEX (5)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
-
-    // --- Report ID 0x05: Rechargeable (Feature) ---
-    0x85, 0x05,        //     REPORT_ID (0x05)
-    0x09, 0x8B,        //     USAGE (Rechargeable)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
-
-    // --- Report ID 0x06: CapacityMode (Feature) ---
-    0x85, 0x06,        //     REPORT_ID (0x06)
-    0x09, 0x2C,        //     USAGE (CapacityMode)
-    0x75, 0x08,        //     REPORT_SIZE (8)
-    0x95, 0x01,        //     REPORT_COUNT (1)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x25, 0x02,        //     LOGICAL_MAXIMUM (2)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
-
-    // --- Report ID 0x07: FullChargeCapacity (Feature) ---
-    0x85, 0x07,        //     REPORT_ID (0x07)
-    0x09, 0x67,        //     USAGE (FullChargeCapacity)
+    0x09, 0x66,        //     USAGE (RemainingCapacity)
     0x75, 0x08,        //     REPORT_SIZE (8)
     0x95, 0x01,        //     REPORT_COUNT (1)
     0x15, 0x00,        //     LOGICAL_MINIMUM (0)
     0x26, 0x64, 0x00,  //     LOGICAL_MAXIMUM (100)
+    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+
+    // RunTimeToEmpty (Input) - 16位分钟
+    0x09, 0x68,        //     USAGE (RunTimeToEmpty)
+    0x75, 0x10,        //     REPORT_SIZE (16)
+    0x95, 0x01,        //     REPORT_COUNT (1)
+    0x16, 0x00, 0x00,  //     LOGICAL_MINIMUM (0)
+    0x26, 0xFE, 0x7F,  //     LOGICAL_MAXIMUM (32766)
+    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+
+    // Voltage (Input) - 16位 (0.1V单位)
+    0x05, 0x84,        //     USAGE_PAGE (Power Device)
+    0x09, 0x84,        //     USAGE (Voltage)
+    0x75, 0x10,        //     REPORT_SIZE (16)
+    0x95, 0x01,        //     REPORT_COUNT (1)
+    0x16, 0x00, 0x00,  //     LOGICAL_MINIMUM (0)
+    0x26, 0xFE, 0x7F,  //     LOGICAL_MAXIMUM (32766)
+    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+
+    // Current (Input) - 16位有符号 (mA单位)
+    0x09, 0x31,        //     USAGE (Current)
+    0x75, 0x10,        //     REPORT_SIZE (16)
+    0x95, 0x01,        //     REPORT_COUNT (1)
+    0x16, 0x00, 0x80,  //     LOGICAL_MINIMUM (-32768)
+    0x26, 0xFF, 0x7F,  //     LOGICAL_MAXIMUM (32767)
+    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+
+    // PresentStatus (Input) - 简化为 8位标志
+    0x05, 0x85,        //     USAGE_PAGE (Battery System)
+    0x09, 0xD0,        //     USAGE (ACPresent)
+    0x09, 0x44,        //     USAGE (Charging)
+    0x09, 0x45,        //     USAGE (Discharging)
+    0x09, 0x46,        //     USAGE (FullyCharged)
+    0x09, 0x4D,        //     USAGE (BatteryPresent)
+    0x75, 0x01,        //     REPORT_SIZE (1)
+    0x95, 0x05,        //     REPORT_COUNT (5)
+    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
+    0x25, 0x01,        //     LOGICAL_MAXIMUM (1)
+    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+    // 填充到 8 位
+    0x75, 0x01,        //     REPORT_SIZE (1)
+    0x95, 0x03,        //     REPORT_COUNT (3)
+    0x81, 0x01,        //     INPUT (Constant)
+
+    // === FEATURE 报告 (配置/握手数据) ===
+    // 所有字段都是 8 位对齐
+
+    // 字符串索引 (8位)
+    0x05, 0x84,        //     USAGE_PAGE (Power Device)
+    0x09, 0xFD,        //     USAGE (iManufacturer)
+    0x75, 0x08,        //     REPORT_SIZE (8)
+    0x95, 0x01,        //     REPORT_COUNT (1)
+    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
+    0x25, 0x03,        //     LOGICAL_MAXIMUM (3)
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
-    // --- Report ID 0x08: DesignCapacity (Feature) ---
-    0x85, 0x08,        //     REPORT_ID (0x08)
+    0x09, 0xFE,        //     USAGE (iProduct)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    0x09, 0xFF,        //     USAGE (iSerialNumber)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    0x09, 0x01,        //     USAGE (iName)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    // iDeviceChemistry (8位)
+    0x05, 0x85,        //     USAGE_PAGE (Battery System)
+    0x09, 0x89,        //     USAGE (iDeviceChemistry)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    // CapacityMode (8位) - 0=mAh, 1=mWh, 2=%
+    0x09, 0x2C,        //     USAGE (CapacityMode)
+    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
+    0x25, 0x02,        //     LOGICAL_MAXIMUM (2)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    // Rechargeable (8位)
+    0x09, 0x8B,        //     USAGE (Rechargeable)
+    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
+    0x25, 0x01,        //     LOGICAL_MAXIMUM (1)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    // 容量限制 (8位)
+    0x09, 0x8C,        //     USAGE (WarningCapacityLimit)
+    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
+    0x26, 0x64, 0x00,  //     LOGICAL_MAXIMUM (100)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    0x09, 0x29,        //     USAGE (RemainingCapacityLimit)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    // RemainingCapacity (Feature) - 8位
+    0x09, 0x66,        //     USAGE (RemainingCapacity)
+    0xB1, 0x82,        //     FEATURE (Data,Var,Abs,Volatile)
+
+    // FullChargeCapacity, DesignCapacity (8位)
+    0x09, 0x67,        //     USAGE (FullChargeCapacity)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
     0x09, 0x83,        //     USAGE (DesignCapacity)
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
-    0xC0,              //   END_COLLECTION (PowerSummary)
+    // RunTimeToEmpty (Feature) - 16位
+    0x09, 0x68,        //     USAGE (RunTimeToEmpty)
+    0x75, 0x10,        //     REPORT_SIZE (16)
+    0x16, 0x00, 0x00,  //     LOGICAL_MINIMUM (0)
+    0x26, 0xFE, 0x7F,  //     LOGICAL_MAXIMUM (32766)
+    0xB1, 0x82,        //     FEATURE (Data,Var,Abs,Volatile)
 
-    // === Report ID 0x0C: RemainingCapacity (Input) ===
-    // 完全按照 APC 真机抓包：0C 64 (Report ID + 1字节百分比)
-    0x85, 0x0C,        //   REPORT_ID (0x0C)
-    0x05, 0x85,        //   USAGE_PAGE (Battery System)
-    0x09, 0x66,        //   USAGE (Remaining Capacity)
-    0x75, 0x08,        //   REPORT_SIZE (8) - 1 byte 百分比
-    0x95, 0x01,        //   REPORT_COUNT (1)
-    0x15, 0x00,        //   LOGICAL_MINIMUM (0)
-    0x26, 0x64, 0x00,  //   LOGICAL_MAXIMUM (100)
-    0x81, 0x02,        //   INPUT (Data,Var,Abs)
+    // RemainingTimeLimit (Feature) - 16位
+    0x75, 0x10,        //     REPORT_SIZE (16)
+    0x09, 0x2A,        //     USAGE (RemainingTimeLimit)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
-    // === Report ID 0x16: PresentStatus (Input) ===
-    // 参考 FreeBSD usbhidctl APC 输出，使用 Battery System Page
-    0x85, 0x16,        //   REPORT_ID (0x16)
-    0x05, 0x85,        //   USAGE_PAGE (Battery System)
-    0x09, 0x6B,        //   USAGE (Present Status)
-    0xA1, 0x02,        //   COLLECTION (Logical)
-    // 状态位顺序参考 APC 原厂 (FreeBSD usbhidctl)
-    0x09, 0x44,        //     USAGE (Charging) - bit 0
-    0x09, 0x45,        //     USAGE (Discharging) - bit 1
-    0x09, 0xD0,        //     USAGE (AC Present) - bit 2
-    0x09, 0x4D,        //     USAGE (Battery Present) - bit 3
-    0x09, 0x42,        //     USAGE (Below Remaining Capacity Limit) - bit 4
-    0x09, 0x69,        //     USAGE (Shutdown Imminent) - bit 5
-    0x09, 0x6C,        //     USAGE (Remaining Time Limit Expired) - bit 6
-    0x09, 0x4B,        //     USAGE (Need Replacement) - bit 7
+    // CapacityGranularity1, CapacityGranularity2 (8位)
+    0x75, 0x08,        //     REPORT_SIZE (8)
+    0x09, 0x8D,        //     USAGE (CapacityGranularity1)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    0x09, 0x8E,        //     USAGE (CapacityGranularity2)
+    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+
+    // PresentStatus (Feature) - 简化为 8位标志
+    0x09, 0xD0,        //     USAGE (ACPresent)
+    0x09, 0x44,        //     USAGE (Charging)
+    0x09, 0x45,        //     USAGE (Discharging)
+    0x09, 0x46,        //     USAGE (FullyCharged)
+    0x09, 0x4D,        //     USAGE (BatteryPresent)
+    0x75, 0x01,        //     REPORT_SIZE (1)
+    0x95, 0x05,        //     REPORT_COUNT (5)
     0x15, 0x00,        //     LOGICAL_MINIMUM (0)
     0x25, 0x01,        //     LOGICAL_MAXIMUM (1)
+    0xB1, 0x82,        //     FEATURE (Data,Var,Abs,Volatile)
+    // 填充到 8 位
     0x75, 0x01,        //     REPORT_SIZE (1)
-    0x95, 0x08,        //     REPORT_COUNT (8)
-    0x81, 0x02,        //     INPUT (Data,Var,Abs)
-    0xC0,              //   END_COLLECTION
+    0x95, 0x03,        //     REPORT_COUNT (3)
+    0xB1, 0x01,        //     FEATURE (Constant)
 
+    0xC0,              //   END_COLLECTION (PowerSummary)
     0xC0               // END_COLLECTION (Application)
 };
 
-// Invoked when received GET HID REPORT DESCRIPTOR
-// Application return pointer to descriptor
-// Descriptor contents must exist long enough for transfer to complete
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
 {
     (void)instance;
@@ -176,9 +238,6 @@ uint8_t const desc_fs_configuration[] =
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 10)
 };
 
-// Invoked when received GET CONFIGURATION DESCRIPTOR
-// Application return pointer to descriptor
-// Descriptor contents must exist long enough for transfer to complete
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 {
     (void)index;
@@ -189,7 +248,6 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 // String Descriptors
 //--------------------------------------------------------------------+
 
-// String Descriptor Index
 enum
 {
     STRID_LANGID = 0,
@@ -198,63 +256,54 @@ enum
     STRID_SERIAL,
 };
 
-// String descriptors
-// 使用 USB 字符串描述符格式：长度 + 类型 + UTF-16LE 字符串
 #define USB_DESC_STR_MAX_CHARS 64U
 
-static uint16_t _desc_str[USB_DESC_STR_MAX_CHARS + 1]; // +1 for header
+static uint16_t _desc_str[USB_DESC_STR_MAX_CHARS + 1];
 
 // 字符串表
 static char const *string_desc_arr[] =
 {
-    (const char[]){0x09, 0x04}, // 0: 语言 ID (English US)
-    "APC",                      // 1: 制造商
-    "Back-UPS ES 650 FW:819.v1", // 2: 产品名称 (与 APC 真机一致)
-    "4B1719P12345",             // 3: 序列号 (与 APC 真机格式一致)
-    "PbAc",                     // 4: 电池化学类型
-    "APC"                       // 5: OEM 信息
+    [STRID_MANUFACTURER] = "Generic UPS",
+    [STRID_PRODUCT]      = "HID Power Device",
+    [STRID_SERIAL]       = "UPS123456789"
 };
 
-// Invoked when received GET STRING DESCRIPTOR request
-// Application return pointer to descriptor, whose contents must exist long enough for transfer to complete
 uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 {
     (void)langid;
 
     uint8_t chr_count;
 
-    if (index == STRID_LANGID)
+    if (index == 0)
     {
-        // 语言 ID 特殊处理
-        memcpy(&_desc_str[1], string_desc_arr[STRID_LANGID], 2);
+        _desc_str[1] = 0x0409;
         chr_count = 1;
     }
     else
     {
-        // 检查索引是否有效
         if (index >= sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))
         {
             return NULL;
         }
 
-        // 转换 ASCII 到 UTF-16LE
         const char *str = string_desc_arr[index];
-        chr_count = (uint8_t)strlen(str);
+        if (str == NULL)
+        {
+            return NULL;
+        }
 
-        // 限制最大长度
+        chr_count = (uint8_t)strlen(str);
         if (chr_count > USB_DESC_STR_MAX_CHARS)
         {
             chr_count = USB_DESC_STR_MAX_CHARS;
         }
 
-        // 复制字符
         for (uint8_t i = 0; i < chr_count; i++)
         {
             _desc_str[1 + i] = str[i];
         }
     }
 
-    // 第一个字节是长度，第二个字节是描述符类型
     _desc_str[0] = (TUSB_DESC_STRING << 8) | (2 * chr_count + 2);
 
     return _desc_str;

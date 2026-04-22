@@ -6,7 +6,6 @@
 #include "ups_hid_reports.h"
 #include "ups_hid_device.h"
 #include "ups_hid_config.h"
-#include "ups_data.h"
 
 /* 函数声明 */
 void SystemClock_Config(void);
@@ -15,65 +14,8 @@ void Error_Handler(void);
 /* USB D+ 上拉模拟变量 */
 static bool s_usb_dp_held_low = false;
 
-/* UPS 配置 (使用新的配置结构) */
+/* UPS 配置 (通用 HID Power Device) */
 ups_hid_config_t g_ups_config = UPS_HID_DEFAULT_CONFIG();
-
-/* 保留旧的全局变量以保持兼容性 */
-ups_present_status_t g_power_summary_present_status = {
-    .ac_present = true,
-    .charging = true,
-    .discharging = false,
-    .fully_charged = true,
-    .need_replacement = false,
-    .below_remaining_capacity_limit = false,
-    .battery_present = true,
-    .overload = false,
-    .shutdown_imminent = false,
-};
-
-ups_summary_t g_power_summary = {
-    .rechargeable = true,
-    .capacity_mode = 2U,
-    .design_capacity = 100U,
-    .full_charge_capacity = 100U,
-    .warning_capacity_limit = 20U,
-    .remaining_capacity_limit = 10U,
-    .i_device_chemistry = 0x05U,
-    .capacity_granularity_1 = 1U,
-    .capacity_granularity_2 = 1U,
-    .i_manufacturer_2bit = 1U,
-    .i_product_2bit = 2U,
-    .i_serial_number_2bit = 3U,
-    .i_name_2bit = 2U,
-};
-
-ups_battery_t g_battery = {
-    .battery_voltage = 0,
-    .battery_current = 0,
-    .config_voltage = 0,
-    .run_time_to_empty_s = 3600,
-    .remaining_time_limit_s = 120,
-    .temperature = 0,
-    .manufacturer_date = 0,
-    .remaining_capacity = 100,  // APC 原厂格式: 100% = 0x64
-};
-
-ups_input_t g_input = {
-    .voltage = 0,
-    .frequency = 0,
-    .config_voltage = 0,
-    .low_voltage_transfer = 0,
-    .high_voltage_transfer = 0,
-};
-
-ups_output_t g_output = {
-    .percent_load = 0,
-    .config_active_power = 0,
-    .config_voltage = 0,
-    .voltage = 0,
-    .current = 0,
-    .frequency = 0,
-};
 
 static void usb_dp_hold_low(bool hold)
 {
