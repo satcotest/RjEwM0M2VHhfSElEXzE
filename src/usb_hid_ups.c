@@ -43,9 +43,16 @@ void ups_hid_periodic_task(void)
         len = build_hid_input_report(APC_REPORT_ID_BATTERY, buffer, sizeof(buffer));
         if (len > 0)
         {
-            (void)tud_hid_report(APC_REPORT_ID_BATTERY, buffer, len);
+            if (tud_hid_report(APC_REPORT_ID_BATTERY, buffer, len))
+            {
+                hid_report_cycle_index = 1;
+            }
+            // 如果发送失败，下次重试
         }
-        hid_report_cycle_index = 1;
+        else
+        {
+            hid_report_cycle_index = 1;
+        }
     }
     else
     {
@@ -53,9 +60,16 @@ void ups_hid_periodic_task(void)
         len = build_hid_input_report(APC_REPORT_ID_STATUS, buffer, sizeof(buffer));
         if (len > 0)
         {
-            (void)tud_hid_report(APC_REPORT_ID_STATUS, buffer, len);
+            if (tud_hid_report(APC_REPORT_ID_STATUS, buffer, len))
+            {
+                hid_report_cycle_index = 0;
+            }
+            // 如果发送失败，下次重试
         }
-        hid_report_cycle_index = 0;
+        else
+        {
+            hid_report_cycle_index = 0;
+        }
     }
 }
 
@@ -160,7 +174,27 @@ static uint16_t handle_feature_report(uint8_t report_id, uint8_t *buffer, uint16
         // 电量报告 (Feature 版本)
         return build_hid_feature_report(report_id, buffer, reqlen);
 
+    case APC_FEATURE_ID_CHEMISTRY:
+        // iDeviceChemistry: 返回字符串索引
+        if (reqlen >= 1)
+        {
+            buffer[0] = 0x04;  // PbAc 字符串索引
+            return 1;
+        }
+        break;
+
+    case APC_FEATURE_ID_OEM:
+        // iOEMInformation: 返回字符串索引
+        if (reqlen >= 1)
+        {
+            buffer[0] = 0x05;  // APC 字符串索引
+            return 1;
+        }
+        break;
+
     default:
+        // 对于未知的 Report ID，返回 0 长度数据而不是 STALL
+        // 这可以避免 Windows 重置管道
         break;
     }
 

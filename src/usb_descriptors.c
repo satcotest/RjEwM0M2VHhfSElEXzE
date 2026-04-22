@@ -304,8 +304,9 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
         }
     }
 
-    // first byte is length (including header), second byte is string type
+    // first byte is length (including header), second byte is string type (0x03)
     desc_str[0] = (uint16_t)((((uint16_t)chr_count) * sizeof(uint16_t)) + sizeof(uint16_t));
+    desc_str[0] |= (TUSB_DESC_STRING << 8);  // 设置类型为字符串描述符 (0x03)
 
     return desc_str;
 }
