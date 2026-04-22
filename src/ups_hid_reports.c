@@ -2,9 +2,6 @@
 #include "ups_hid_config.h"
 #include <string.h>
 
-// Report ID 定义
-#define REPORT_ID_POWER_SUMMARY 0x01
-
 // 全局配置
 extern ups_hid_config_t g_ups_config;
 
