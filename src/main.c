@@ -5,6 +5,7 @@
 #include "usb_descriptors.h"
 #include "ups_hid_reports.h"
 #include "ups_hid_device.h"
+#include "ups_hid_config.h"
 #include "ups_data.h"
 
 /* 函数声明 */
@@ -14,11 +15,10 @@ void Error_Handler(void);
 /* USB D+ 上拉模拟变量 */
 static bool s_usb_dp_held_low = false;
 
-/* UPS 状态变量 - APC 原厂格式
- * 状态字节 0x0C = 0000 1100:
- *   bit2: 1 = 市电正常/充电中
- *   bit3: 1 = 无故障/正常状态
- */
+/* UPS 配置 (使用新的配置结构) */
+ups_hid_config_t g_ups_config = UPS_HID_DEFAULT_CONFIG();
+
+/* 保留旧的全局变量以保持兼容性 */
 ups_present_status_t g_power_summary_present_status = {
     .ac_present = true,
     .charging = true,

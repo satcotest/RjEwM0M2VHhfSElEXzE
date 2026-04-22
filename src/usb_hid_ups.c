@@ -1,31 +1,27 @@
 #include "ups_hid_device.h"
-
 #include "ups_hid_reports.h"
+#include "ups_hid_config.h"
 
 #include "stm32f1xx_hal.h"
 #include "tusb.h"
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
-// APC 原厂 Report ID
-#define APC_REPORT_ID_BATTERY     0x0C  // 电量报告
-#define APC_REPORT_ID_STATUS      0x16  // 状态报告
+// 全局配置 (在 main.c 中定义)
+extern ups_hid_config_t g_ups_config;
 
 static uint32_t hid_last_report_ms;
 static uint8_t hid_report_cycle_index;
 
-static void reset_hid_timing_state(void)
-{
-    hid_last_report_ms = 0U;
-    hid_report_cycle_index = 0U;
-}
+// 前向声明
+static uint16_t handle_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t reqlen);
 
 void ups_hid_periodic_task(void)
 {
-    // Send Input Report more frequently for Windows battery display
     uint32_t const now_ms = HAL_GetTick();
-    if ((now_ms - hid_last_report_ms) < 1000U)  // 每秒发送一次
+    if ((now_ms - hid_last_report_ms) < g_ups_config.report_interval_ms)
     {
         return;
     }
@@ -38,22 +34,27 @@ void ups_hid_periodic_task(void)
     }
 
     // 轮流发送电量报告和状态报告
-    // 注意: TinyUSB 的 tud_hid_report 第一个参数是 report_id
-    // 数据包格式: ReportID + Data
+    uint8_t buffer[2];
+    uint16_t len;
+
     if (hid_report_cycle_index == 0)
     {
         // 发送电量报告 (Report ID 0x0C)
-        // 数据包格式: 0C 64 (ReportID=0x0C, 电量=100%)
-        uint8_t battery_report[1] = {100};  // 电量 100%
-        (void)tud_hid_report(APC_REPORT_ID_BATTERY, battery_report, sizeof(battery_report));
+        len = build_hid_input_report(APC_REPORT_ID_BATTERY, buffer, sizeof(buffer));
+        if (len > 0)
+        {
+            (void)tud_hid_report(APC_REPORT_ID_BATTERY, buffer, len);
+        }
         hid_report_cycle_index = 1;
     }
     else
     {
         // 发送状态报告 (Report ID 0x16)
-        // 数据包格式: 16 0C 00 (ReportID=0x16, 状态1=0x0C, 状态2=0x00)
-        uint8_t status_report[2] = {0x0C, 0x00};  // 状态字节
-        (void)tud_hid_report(APC_REPORT_ID_STATUS, status_report, sizeof(status_report));
+        len = build_hid_input_report(APC_REPORT_ID_STATUS, buffer, sizeof(buffer));
+        if (len > 0)
+        {
+            (void)tud_hid_report(APC_REPORT_ID_STATUS, buffer, len);
+        }
         hid_report_cycle_index = 0;
     }
 }
@@ -81,48 +82,87 @@ uint16_t tud_hid_get_report_cb(uint8_t instance,
 
     if (report_type == HID_REPORT_TYPE_INPUT)
     {
-        // 根据 Report ID 返回对应的数据
-        if (report_id == APC_REPORT_ID_BATTERY)
-        {
-            // 电量报告: 返回 1 字节电量
-            if (reqlen >= 1)
-            {
-                buffer[0] = 100;  // 电量 100%
-                return 1;
-            }
-        }
-        else if (report_id == APC_REPORT_ID_STATUS)
-        {
-            // 状态报告: 返回 2 字节状态
-            if (reqlen >= 2)
-            {
-                buffer[0] = 0x0C;  // 状态1: 市电正常
-                buffer[1] = 0x00;  // 状态2
-                return 2;
-            }
-        }
+        return build_hid_input_report(report_id, buffer, reqlen);
+    }
+    else if (report_type == HID_REPORT_TYPE_FEATURE)
+    {
+        return handle_feature_report(report_id, buffer, reqlen);
     }
 
     return 0U;
 }
 
-// Mount and unmount callbacks to prevent usb failures due to stale state.
-void tud_mount_cb(void)
+// 处理 Feature Report 请求 (hidups.sys 握手流程)
+static uint16_t handle_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t reqlen)
 {
-    reset_hid_timing_state();
-}
+    if ((buffer == NULL) || (reqlen == 0U))
+    {
+        return 0U;
+    }
 
-void tud_umount_cb(void)
-{
-    reset_hid_timing_state();
-}
+    switch (report_id)
+    {
+    case APC_FEATURE_ID_PRODUCT:
+        // iProduct: 返回产品字符串索引
+        if (reqlen >= 1)
+        {
+            buffer[0] = g_ups_config.i_product;
+            return 1;
+        }
+        break;
 
-void tud_suspend_cb(bool remote_wakeup_en)
-{
-    (void)remote_wakeup_en;
-}
+    case APC_FEATURE_ID_SERIAL:
+        // iSerialNumber: 返回序列号字符串索引
+        if (reqlen >= 1)
+        {
+            buffer[0] = g_ups_config.i_serial;
+            return 1;
+        }
+        break;
 
-void tud_resume_cb(void)
-{
-    reset_hid_timing_state();
+    case APC_FEATURE_ID_RECHARGEABLE:
+        // Rechargeable: 返回 1 (可充电)
+        if (reqlen >= 1)
+        {
+            buffer[0] = 0x01;
+            return 1;
+        }
+        break;
+
+    case APC_FEATURE_ID_CAPACITY_MODE:
+        // CapacityMode: 返回百分比模式 (0x02)
+        if (reqlen >= 1)
+        {
+            buffer[0] = g_ups_config.capacity_mode;
+            return 1;
+        }
+        break;
+
+    case APC_FEATURE_ID_FULL_CHARGE:
+        // FullChargeCapacity: 返回满电容量
+        if (reqlen >= 1)
+        {
+            buffer[0] = g_ups_config.full_charge_capacity;
+            return 1;
+        }
+        break;
+
+    case APC_FEATURE_ID_DESIGN_CAPACITY:
+        // DesignCapacity: 返回设计容量
+        if (reqlen >= 1)
+        {
+            buffer[0] = g_ups_config.design_capacity;
+            return 1;
+        }
+        break;
+
+    case APC_REPORT_ID_BATTERY:
+        // 电量报告 (Feature 版本)
+        return build_hid_feature_report(report_id, buffer, reqlen);
+
+    default:
+        break;
+    }
+
+    return 0U;
 }
