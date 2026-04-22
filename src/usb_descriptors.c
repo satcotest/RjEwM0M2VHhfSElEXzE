@@ -8,6 +8,44 @@
  */
 
 //--------------------------------------------------------------------+
+// HID Descriptor 辅助宏 (使用 UPS_ 前缀避免与 TinyUSB 冲突)
+//--------------------------------------------------------------------+
+
+// Usage Page 宏
+#define UPS_USAGE_PAGE(x)       0x05, x
+#define UPS_USAGE_PAGE16(x)     0x06, (x & 0xFF), (x >> 8)
+
+// Usage 宏
+#define UPS_USAGE(x)            0x09, x
+#define UPS_USAGE16(x)          0x0A, (x & 0xFF), (x >> 8)
+
+// Collection 宏
+#define UPS_COLLECTION(x)       0xA1, x
+#define UPS_END_COLLECTION      0xC0
+
+// Report ID
+#define UPS_REPORT_ID(x)        0x85, x
+
+// Input/Feature 宏
+#define UPS_INPUT(x)            0x81, x
+#define UPS_FEATURE(x)          0xB1, x
+
+// 报告大小和数量
+#define UPS_REPORT_SIZE(x)      0x75, x
+#define UPS_REPORT_COUNT(x)     0x95, x
+
+// 逻辑最小/最大值
+#define UPS_LOGICAL_MIN8(x)     0x15, (int8_t)(x)
+#define UPS_LOGICAL_MAX8(x)     0x25, (int8_t)(x)
+#define UPS_LOGICAL_MIN16(x)    0x16, (x & 0xFF), ((x >> 8) & 0xFF)
+#define UPS_LOGICAL_MAX16(x)    0x26, (x & 0xFF), ((x >> 8) & 0xFF)
+
+// 常用报告属性
+#define UPS_DATA_VAR_ABS        0x02
+#define UPS_DATA_VAR_ABS_VOL    0x82
+#define UPS_CONST_VAR_ABS       0x01
+
+//--------------------------------------------------------------------+
 // Device Descriptors
 //--------------------------------------------------------------------+
 tusb_desc_device_t const desc_device =
@@ -39,174 +77,165 @@ uint8_t const *tud_descriptor_device_cb(void)
 
 //--------------------------------------------------------------------+
 // HID Report Descriptor
-// 简化版本 - 确保字节对齐
+// 优化版本 - 使用宏定义提高可读性
 // Report ID 1: Power Summary (Input + Feature)
 //--------------------------------------------------------------------+
 
 uint8_t const desc_hid_report[] =
 {
     // === Power Device (UPS) Application Collection ===
-    0x05, 0x84,        // USAGE_PAGE (Power Device)
-    0x09, 0x04,        // USAGE (UPS)
-    0xA1, 0x01,        // COLLECTION (Application)
+    UPS_USAGE_PAGE(0x84),           // Power Device
+    UPS_USAGE(0x04),                // UPS
+    UPS_COLLECTION(0x01),           // Application
 
     // =====================================================
     // Report ID 1: Power Summary
     // =====================================================
-    0x09, 0x24,        //   USAGE (Power Summary)
-    0xA1, 0x02,        //   COLLECTION (Logical)
-    0x85, 0x01,        //     REPORT_ID (1)
+    UPS_USAGE(0x24),                // Power Summary
+    UPS_COLLECTION(0x02),           // Logical
+    UPS_REPORT_ID(0x01),
 
-    // === INPUT 报告 (实时数据) ===
-    // 所有字段都是 8 位或 16 位，确保字节对齐
+    // === INPUT 报告 (8字节) ===
+    // [RemainingCapacity(1)] [RunTimeToEmpty(2)] [Voltage(2)] [Current(2)] [PresentStatus(1)]
 
-    // RemainingCapacity (Input) - 8位百分比
-    0x05, 0x85,        //     USAGE_PAGE (Battery System)
-    0x09, 0x66,        //     USAGE (RemainingCapacity)
-    0x75, 0x08,        //     REPORT_SIZE (8)
-    0x95, 0x01,        //     REPORT_COUNT (1)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x26, 0x64, 0x00,  //     LOGICAL_MAXIMUM (100)
-    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+    // RemainingCapacity - 8位百分比
+    UPS_USAGE_PAGE(0x85),           // Battery System
+    UPS_USAGE(0x66),                // RemainingCapacity
+    UPS_REPORT_SIZE(8),
+    UPS_REPORT_COUNT(1),
+    UPS_LOGICAL_MIN8(0),
+    UPS_LOGICAL_MAX8(100),
+    UPS_INPUT(UPS_DATA_VAR_ABS_VOL),
 
-    // RunTimeToEmpty (Input) - 16位分钟
-    0x09, 0x68,        //     USAGE (RunTimeToEmpty)
-    0x75, 0x10,        //     REPORT_SIZE (16)
-    0x95, 0x01,        //     REPORT_COUNT (1)
-    0x16, 0x00, 0x00,  //     LOGICAL_MINIMUM (0)
-    0x26, 0xFE, 0x7F,  //     LOGICAL_MAXIMUM (32766)
-    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+    // RunTimeToEmpty - 16位分钟
+    UPS_USAGE(0x68),                // RunTimeToEmpty
+    UPS_REPORT_SIZE(16),
+    UPS_LOGICAL_MIN16(0),
+    UPS_LOGICAL_MAX16(32766),
+    UPS_INPUT(UPS_DATA_VAR_ABS_VOL),
 
-    // Voltage (Input) - 16位 (0.1V单位)
-    0x05, 0x84,        //     USAGE_PAGE (Power Device)
-    0x09, 0x84,        //     USAGE (Voltage)
-    0x75, 0x10,        //     REPORT_SIZE (16)
-    0x95, 0x01,        //     REPORT_COUNT (1)
-    0x16, 0x00, 0x00,  //     LOGICAL_MINIMUM (0)
-    0x26, 0xFE, 0x7F,  //     LOGICAL_MAXIMUM (32766)
-    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+    // Voltage - 16位 (0.1V单位)
+    UPS_USAGE_PAGE(0x84),           // Power Device
+    UPS_USAGE(0x84),                // Voltage
+    UPS_LOGICAL_MIN16(0),
+    UPS_LOGICAL_MAX16(32766),
+    UPS_INPUT(UPS_DATA_VAR_ABS_VOL),
 
-    // Current (Input) - 16位有符号 (mA单位)
-    0x09, 0x31,        //     USAGE (Current)
-    0x75, 0x10,        //     REPORT_SIZE (16)
-    0x95, 0x01,        //     REPORT_COUNT (1)
-    0x16, 0x00, 0x80,  //     LOGICAL_MINIMUM (-32768)
-    0x26, 0xFF, 0x7F,  //     LOGICAL_MAXIMUM (32767)
-    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
+    // Current - 16位有符号 (mA单位)
+    UPS_USAGE(0x31),                // Current
+    UPS_LOGICAL_MIN16(-32768),
+    UPS_LOGICAL_MAX16(32767),
+    UPS_INPUT(UPS_DATA_VAR_ABS_VOL),
 
-    // PresentStatus (Input) - 简化为 8位标志
-    0x05, 0x85,        //     USAGE_PAGE (Battery System)
-    0x09, 0xD0,        //     USAGE (ACPresent)
-    0x09, 0x44,        //     USAGE (Charging)
-    0x09, 0x45,        //     USAGE (Discharging)
-    0x09, 0x46,        //     USAGE (FullyCharged)
-    0x09, 0x4D,        //     USAGE (BatteryPresent)
-    0x75, 0x01,        //     REPORT_SIZE (1)
-    0x95, 0x05,        //     REPORT_COUNT (5)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x25, 0x01,        //     LOGICAL_MAXIMUM (1)
-    0x81, 0x82,        //     INPUT (Data,Var,Abs,Volatile)
-    // 填充到 8 位
-    0x75, 0x01,        //     REPORT_SIZE (1)
-    0x95, 0x03,        //     REPORT_COUNT (3)
-    0x81, 0x01,        //     INPUT (Constant)
+    // PresentStatus - 5位状态 + 3位填充
+    UPS_USAGE_PAGE(0x85),           // Battery System
+    UPS_USAGE(0xD0),                // ACPresent
+    UPS_USAGE(0x44),                // Charging
+    UPS_USAGE(0x45),                // Discharging
+    UPS_USAGE(0x46),                // FullyCharged
+    UPS_USAGE(0x4D),                // BatteryPresent
+    UPS_REPORT_SIZE(1),
+    UPS_REPORT_COUNT(5),
+    UPS_LOGICAL_MIN8(0),
+    UPS_LOGICAL_MAX8(1),
+    UPS_INPUT(UPS_DATA_VAR_ABS_VOL),
+    // 填充到8位
+    UPS_REPORT_COUNT(3),
+    UPS_INPUT(UPS_CONST_VAR_ABS),
 
-    // === FEATURE 报告 (配置/握手数据) ===
-    // 所有字段都是 8 位对齐
+    // === FEATURE 报告 (20字节) ===
 
-    // 字符串索引 (8位)
-    0x05, 0x84,        //     USAGE_PAGE (Power Device)
-    0x09, 0xFD,        //     USAGE (iManufacturer)
-    0x75, 0x08,        //     REPORT_SIZE (8)
-    0x95, 0x01,        //     REPORT_COUNT (1)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x25, 0x03,        //     LOGICAL_MAXIMUM (3)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // 字符串索引 (各1字节)
+    UPS_USAGE_PAGE(0x84),           // Power Device
+    UPS_USAGE(0xFD),                // iManufacturer
+    UPS_REPORT_SIZE(8),
+    UPS_REPORT_COUNT(1),
+    UPS_LOGICAL_MIN8(0),
+    UPS_LOGICAL_MAX8(3),
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    0x09, 0xFE,        //     USAGE (iProduct)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    UPS_USAGE(0xFE),                // iProduct
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    0x09, 0xFF,        //     USAGE (iSerialNumber)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    UPS_USAGE(0xFF),                // iSerialNumber
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    0x09, 0x01,        //     USAGE (iName)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    UPS_USAGE(0x01),                // iName
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    // iDeviceChemistry (8位)
-    0x05, 0x85,        //     USAGE_PAGE (Battery System)
-    0x09, 0x89,        //     USAGE (iDeviceChemistry)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // iDeviceChemistry
+    UPS_USAGE_PAGE(0x85),           // Battery System
+    UPS_USAGE(0x89),                // iDeviceChemistry
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    // CapacityMode (8位) - 0=mAh, 1=mWh, 2=%
-    0x09, 0x2C,        //     USAGE (CapacityMode)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x25, 0x02,        //     LOGICAL_MAXIMUM (2)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // CapacityMode - 0=mAh, 1=mWh, 2=%
+    UPS_USAGE(0x2C),                // CapacityMode
+    UPS_LOGICAL_MIN8(0),
+    UPS_LOGICAL_MAX8(2),
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    // Rechargeable (8位)
-    0x09, 0x8B,        //     USAGE (Rechargeable)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x25, 0x01,        //     LOGICAL_MAXIMUM (1)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // Rechargeable
+    UPS_USAGE(0x8B),                // Rechargeable
+    UPS_LOGICAL_MIN8(0),
+    UPS_LOGICAL_MAX8(1),
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    // 容量限制 (8位)
-    0x09, 0x8C,        //     USAGE (WarningCapacityLimit)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x26, 0x64, 0x00,  //     LOGICAL_MAXIMUM (100)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // 容量限制 (各1字节)
+    UPS_USAGE(0x8C),                // WarningCapacityLimit
+    UPS_LOGICAL_MIN8(0),
+    UPS_LOGICAL_MAX8(100),
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    0x09, 0x29,        //     USAGE (RemainingCapacityLimit)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    UPS_USAGE(0x29),                // RemainingCapacityLimit
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    // RemainingCapacity (Feature) - 8位
-    0x09, 0x66,        //     USAGE (RemainingCapacity)
-    0xB1, 0x82,        //     FEATURE (Data,Var,Abs,Volatile)
+    // RemainingCapacity (Volatile)
+    UPS_USAGE(0x66),                // RemainingCapacity
+    UPS_FEATURE(UPS_DATA_VAR_ABS_VOL),
 
-    // FullChargeCapacity, DesignCapacity (8位)
-    0x09, 0x67,        //     USAGE (FullChargeCapacity)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // FullChargeCapacity, DesignCapacity
+    UPS_USAGE(0x67),                // FullChargeCapacity
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    0x09, 0x83,        //     USAGE (DesignCapacity)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    UPS_USAGE(0x83),                // DesignCapacity
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    // RunTimeToEmpty (Feature) - 16位
-    0x09, 0x68,        //     USAGE (RunTimeToEmpty)
-    0x75, 0x10,        //     REPORT_SIZE (16)
-    0x16, 0x00, 0x00,  //     LOGICAL_MINIMUM (0)
-    0x26, 0xFE, 0x7F,  //     LOGICAL_MAXIMUM (32766)
-    0xB1, 0x82,        //     FEATURE (Data,Var,Abs,Volatile)
+    // RunTimeToEmpty - 16位
+    UPS_USAGE(0x68),                // RunTimeToEmpty
+    UPS_REPORT_SIZE(16),
+    UPS_LOGICAL_MIN16(0),
+    UPS_LOGICAL_MAX16(32766),
+    UPS_FEATURE(UPS_DATA_VAR_ABS_VOL),
 
-    // RemainingTimeLimit (Feature) - 16位
-    0x75, 0x10,        //     REPORT_SIZE (16)
-    0x09, 0x2A,        //     USAGE (RemainingTimeLimit)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // RemainingTimeLimit - 16位
+    UPS_USAGE(0x2A),                // RemainingTimeLimit
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    // CapacityGranularity1, CapacityGranularity2 (8位)
-    0x75, 0x08,        //     REPORT_SIZE (8)
-    0x09, 0x8D,        //     USAGE (CapacityGranularity1)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    // CapacityGranularity1, CapacityGranularity2
+    UPS_REPORT_SIZE(8),
+    UPS_USAGE(0x8D),                // CapacityGranularity1
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    0x09, 0x8E,        //     USAGE (CapacityGranularity2)
-    0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
+    UPS_USAGE(0x8E),                // CapacityGranularity2
+    UPS_FEATURE(UPS_DATA_VAR_ABS),
 
-    // PresentStatus (Feature) - 简化为 8位标志
-    0x09, 0xD0,        //     USAGE (ACPresent)
-    0x09, 0x44,        //     USAGE (Charging)
-    0x09, 0x45,        //     USAGE (Discharging)
-    0x09, 0x46,        //     USAGE (FullyCharged)
-    0x09, 0x4D,        //     USAGE (BatteryPresent)
-    0x75, 0x01,        //     REPORT_SIZE (1)
-    0x95, 0x05,        //     REPORT_COUNT (5)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x25, 0x01,        //     LOGICAL_MAXIMUM (1)
-    0xB1, 0x82,        //     FEATURE (Data,Var,Abs,Volatile)
-    // 填充到 8 位
-    0x75, 0x01,        //     REPORT_SIZE (1)
-    0x95, 0x03,        //     REPORT_COUNT (3)
-    0xB1, 0x01,        //     FEATURE (Constant)
+    // PresentStatus (Feature) - 5位 + 3位填充
+    UPS_USAGE(0xD0),                // ACPresent
+    UPS_USAGE(0x44),                // Charging
+    UPS_USAGE(0x45),                // Discharging
+    UPS_USAGE(0x46),                // FullyCharged
+    UPS_USAGE(0x4D),                // BatteryPresent
+    UPS_REPORT_SIZE(1),
+    UPS_REPORT_COUNT(5),
+    UPS_LOGICAL_MIN8(0),
+    UPS_LOGICAL_MAX8(1),
+    UPS_FEATURE(UPS_DATA_VAR_ABS_VOL),
+    // 填充到8位
+    UPS_REPORT_COUNT(3),
+    UPS_FEATURE(UPS_CONST_VAR_ABS),
 
-    0xC0,              //   END_COLLECTION (PowerSummary)
-    0xC0               // END_COLLECTION (Application)
+    UPS_END_COLLECTION,             // End Power Summary
+    UPS_END_COLLECTION              // End Application
 };
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
