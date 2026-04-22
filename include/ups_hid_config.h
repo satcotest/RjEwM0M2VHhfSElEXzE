@@ -1,12 +1,8 @@
-#ifndef UPS_HID_CONFIG_H_
-#define UPS_HID_CONFIG_H_
+#ifndef UPS_HID_CONFIG_H
+#define UPS_HID_CONFIG_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // APC UPS Report IDs (原厂格式)
 #define APC_REPORT_ID_BATTERY     0x0C  // 电量报告
@@ -38,12 +34,17 @@ typedef union {
     uint8_t value;
 } apc_status_byte1_t;
 
-// 状态字节2 (扩展状态)
+// 状态字节2 (对应 APC 抓包中的 0x00)
 typedef union {
     struct {
-        uint8_t fully_charged   : 1;  // bit 0: 已充满
-        uint8_t overload        : 1;  // bit 1: 过载
-        uint8_t reserved        : 6;  // bit 2-7: 保留
+        uint8_t reserved1                     : 1;  // bit 0: 保留
+        uint8_t reserved2                     : 1;  // bit 1: 保留
+        uint8_t reserved3                     : 1;  // bit 2: 保留
+        uint8_t reserved4                     : 1;  // bit 3: 保留
+        uint8_t reserved5                     : 1;  // bit 4: 保留
+        uint8_t reserved6                     : 1;  // bit 5: 保留
+        uint8_t fully_charged                 : 1;  // bit 6: 已充满
+        uint8_t reserved7                     : 1;  // bit 7: 保留
     } bits;
     uint8_t value;
 } apc_status_byte2_t;
@@ -81,27 +82,11 @@ typedef struct {
     .report_interval_ms = 1000, \
 }
 
-// 默认状态: 市电正常 + 充电中 + 电池存在
-// 0x0D = 00001101b = Charging(1) + AC正常(4) + 电池存在(8)
-#define APC_STATUS_DEFAULT 0x0D
-
-// 初始化配置为默认值
+// 函数声明
 void ups_hid_config_init(void);
-
-// 设置电量百分比 (0-100)
 void ups_hid_set_battery_level(uint8_t level);
-
-// 设置状态
 void ups_hid_set_status(bool ac_present, bool charging, bool battery_present);
-
-// 获取当前电量
 uint8_t ups_hid_get_battery_level(void);
-
-// 获取当前状态字节
 uint8_t ups_hid_get_status_byte1(void);
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif // UPS_HID_CONFIG_H_
+#endif // UPS_HID_CONFIG_H

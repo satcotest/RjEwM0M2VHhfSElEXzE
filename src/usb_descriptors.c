@@ -1,56 +1,32 @@
-/*
- * The MIT License (MIT)
- *
- * Copyright (c) 2019 Ha Thach (tinyusb.org)
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
- */
-
 #include "tusb.h"
 #include "usb_descriptors.h"
-#include <stdbool.h>
-#include <stdint.h>
+
+/* A Minimal CDC + HID for MSC mode */
 
 //--------------------------------------------------------------------+
 // Device Descriptors
 //--------------------------------------------------------------------+
 tusb_desc_device_t const desc_device =
-    {
-        .bLength = sizeof(tusb_desc_device_t),
-        .bDescriptorType = TUSB_DESC_DEVICE,
-        .bcdUSB = 0x0200,
-        .bDeviceClass = 0x00,
-        .bDeviceSubClass = 0x00,
-        .bDeviceProtocol = 0x00,
-        .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
+{
+    .bLength = sizeof(tusb_desc_device_t),
+    .bDescriptorType = TUSB_DESC_DEVICE,
+    .bcdUSB = 0x0200,
+    .bDeviceClass = 0x00,
+    .bDeviceSubClass = 0x00,
+    .bDeviceProtocol = 0x00,
+    .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
 
-        // APC 原厂 VID/PID - 匹配 BK650M2-CH
-        .idVendor = 0x051D,  // APC
-        .idProduct = 0x0002, // Back-UPS
-        .bcdDevice = 0x0106,  // Firmware 1.06
+    // APC UPS 原厂 VID/PID
+    .idVendor = 0x051D,
+    .idProduct = 0x0002,
+    .bcdDevice = 0x0106,
 
-        .iManufacturer = 0x01,
-        .iProduct = 0x02,
-        .iSerialNumber = 0x03,
+    .iManufacturer = 0x01,
+    .iProduct = 0x02,
+    .iSerialNumber = 0x03,
 
-        .bNumConfigurations = 0x01};
+    .bNumConfigurations = 0x01
+};
 
 // Invoked when received GET DEVICE DESCRIPTOR
 // Application return pointer to descriptor
@@ -61,46 +37,32 @@ uint8_t const *tud_descriptor_device_cb(void)
 
 //--------------------------------------------------------------------+
 // HID Report Descriptor
+// 基于 APC Back-UPS ES 650 (USB ID 051D:0002) 原厂格式
 //--------------------------------------------------------------------+
-//
-// 基于 APC Back-UPS CS 500 原厂 Report Descriptor
-// 参考: Network UPS Tools (NUT) 调试输出
-//
-// Windows hidups.sys 初始化流程 (GET_REPORT Feature):
-//   ReportID 0x01: iProduct
-//   ReportID 0x02: iSerialNumber
-//   ReportID 0x03: iDeviceChemistry
-//   ReportID 0x04: iOEMInformation
-//   ReportID 0x05: Rechargeable
-//
-// 输入报告 (Input):
-//   ReportID 0x0C: RemainingCapacity (电量)
-//   ReportID 0x16: PresentStatus (状态)
 
-uint8_t const desc_hid_report[] = {
-    // Power Device Page
-    0x05, 0x84,  // USAGE_PAGE (Power Device)
-    0x09, 0x04,  // USAGE (UPS)
-    0xA1, 0x01,  // COLLECTION (Application)
+// HID Report Descriptor
+// 基于 APC Back-UPS ES 650 原厂格式
+uint8_t const desc_hid_report[] =
+{
+    // === Power Device (UPS) ===
+    0x05, 0x84,        // USAGE_PAGE (Power Device)
+    0x09, 0x04,        // USAGE (UPS)
+    0xA1, 0x01,        // COLLECTION (Application)
 
-    // === PowerSummary Collection ===
-    0x09, 0x24,        //   USAGE (PowerSummary)
-    0xA1, 0x00,        //   COLLECTION (Physical)
+    // === Power Summary ===
+    0x09, 0x24,        //   USAGE (Power Summary)
+    0xA1, 0x02,        //   COLLECTION (Logical)
 
     // --- Report ID 0x01: iProduct (Feature) ---
     0x85, 0x01,        //     REPORT_ID (0x01)
     0x09, 0xFE,        //     USAGE (iProduct)
-    0x79, 0x01,        //     STRING INDEX (1)
-    0x75, 0x08,        //     REPORT_SIZE (8)
-    0x95, 0x01,        //     REPORT_COUNT (1)
-    0x15, 0x00,        //     LOGICAL_MINIMUM (0)
-    0x26, 0xFF, 0x00,  //     LOGICAL_MAXIMUM (255)
+    0x79, 0x02,        //     STRING INDEX (2)
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
     // --- Report ID 0x02: iSerialNumber (Feature) ---
     0x85, 0x02,        //     REPORT_ID (0x02)
     0x09, 0xFF,        //     USAGE (iSerialNumber)
-    0x79, 0x02,        //     STRING INDEX (2)
+    0x79, 0x03,        //     STRING INDEX (3)
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
     // --- Report ID 0x03: iDeviceChemistry (Feature) ---
@@ -113,19 +75,15 @@ uint8_t const desc_hid_report[] = {
     // --- Report ID 0x04: iOEMInformation (Feature) ---
     0x85, 0x04,        //     REPORT_ID (0x04)
     0x09, 0x8F,        //     USAGE (iOEMInformation)
-    0x79, 0x03,        //     STRING INDEX (3)
+    0x79, 0x05,        //     STRING INDEX (5)
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
     // --- Report ID 0x05: Rechargeable (Feature) ---
     0x85, 0x05,        //     REPORT_ID (0x05)
     0x09, 0x8B,        //     USAGE (Rechargeable)
-    0x65, 0x00,        //     UNIT (None)
-    0x55, 0x00,        //     UNIT EXPONENT (0)
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
     // --- Report ID 0x06: CapacityMode (Feature) ---
-    // 关键：设置为 mWh (0x01) 解决 Windows 多电池环境下显示 0% 的问题
-    // 参考 HIDPowerDevice Issue #11: https://github.com/abratchik/HIDPowerDevice/issues/11
     0x85, 0x06,        //     REPORT_ID (0x06)
     0x09, 0x2C,        //     USAGE (CapacityMode)
     0x75, 0x08,        //     REPORT_SIZE (8)
@@ -135,7 +93,6 @@ uint8_t const desc_hid_report[] = {
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
     // --- Report ID 0x07: FullChargeCapacity (Feature) ---
-    // Windows 需要这个来计算电量百分比 (百分比模式：0-100)
     0x85, 0x07,        //     REPORT_ID (0x07)
     0x09, 0x67,        //     USAGE (FullChargeCapacity)
     0x75, 0x08,        //     REPORT_SIZE (8)
@@ -145,7 +102,6 @@ uint8_t const desc_hid_report[] = {
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
 
     // --- Report ID 0x08: DesignCapacity (Feature) ---
-    // Windows 需要这个来计算电量百分比 (百分比模式：0-100)
     0x85, 0x08,        //     REPORT_ID (0x08)
     0x09, 0x83,        //     USAGE (DesignCapacity)
     0xB1, 0x02,        //     FEATURE (Data,Var,Abs)
@@ -162,8 +118,6 @@ uint8_t const desc_hid_report[] = {
     0x15, 0x00,        //   LOGICAL_MINIMUM (0)
     0x26, 0x64, 0x00,  //   LOGICAL_MAXIMUM (100)
     0x81, 0x02,        //   INPUT (Data,Var,Abs)
-    0x09, 0x66,        //   USAGE (Remaining Capacity)
-    0xB1, 0x02,        //   FEATURE (Data,Var,Abs)
 
     // === Report ID 0x16: PresentStatus (Input) ===
     // 参考 FreeBSD usbhidctl APC 输出，使用 Battery System Page
@@ -213,22 +167,22 @@ enum
 
 #define EPNUM_HID 0x81
 
-uint8_t const desc_configuration[] =
-    {
-        // Config number, interface count, string index, total length, attribute, power in mA
-        // set attribute to 0 for bus powered device without remote wakeup
-        TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0, 100),
+uint8_t const desc_fs_configuration[] =
+{
+    // Config number, interface count, string index, total length, attribute, power in mA
+    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0x00, 100),
 
-        // Interface number, string index, protocol, report descriptor len, EP In address, size & polling interval
-        TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 200)};
+    // Interface number, string index, protocol, report descriptor len, EP In address, size & polling interval
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 10)
+};
 
 // Invoked when received GET CONFIGURATION DESCRIPTOR
 // Application return pointer to descriptor
 // Descriptor contents must exist long enough for transfer to complete
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 {
-    (void)index; // for multiple configurations
-    return desc_configuration;
+    (void)index;
+    return desc_fs_configuration;
 }
 
 //--------------------------------------------------------------------+
@@ -241,29 +195,25 @@ enum
     STRID_LANGID = 0,
     STRID_MANUFACTURER,
     STRID_PRODUCT,
-    STRID_SERIAL_NUMBER,
-    STRID_DEVICE_CHEMISTRY,
-    STRID_OEM_INFORMATION
+    STRID_SERIAL,
 };
 
-// Language ID
-#define USB_LANGUAGE_ID 0x0409 // English (US)
+// String descriptors
+// 使用 USB 字符串描述符格式：长度 + 类型 + UTF-16LE 字符串
+#define USB_DESC_STR_MAX_CHARS 64U
 
-// String descriptors data - 匹配真机 BK650M2-CH
-static const char *const string_desc_arr[] =
-    {
-        [STRID_MANUFACTURER] = "American Power Conversion", // 厂商名称
-        [STRID_PRODUCT] = "Back-UPS BK650M2-CH FW:294803G-292804G", // 产品名称(匹配真机)
-        [STRID_SERIAL_NUMBER] = "9B2216A17431", // 序列号(匹配真机)
-        [STRID_DEVICE_CHEMISTRY] = "PbAc", // 电池化学类型 (Lead Acid)
-        [STRID_OEM_INFORMATION] = "APC" // OEM 信息
+static uint16_t _desc_str[USB_DESC_STR_MAX_CHARS + 1]; // +1 for header
+
+// 字符串表
+static char const *string_desc_arr[] =
+{
+    (const char[]){0x09, 0x04}, // 0: 语言 ID (English US)
+    "APC",                      // 1: 制造商
+    "Back-UPS ES 650 FW:819.v1", // 2: 产品名称 (与 APC 真机一致)
+    "4B1719P12345",             // 3: 序列号 (与 APC 真机格式一致)
+    "PbAc",                     // 4: 电池化学类型
+    "APC"                       // 5: OEM 信息
 };
-
-// String descriptor buffer
-static uint16_t desc_str_buffer[64 + 1];
-
-// Alias for compatibility with header
-#define desc_str desc_str_buffer
 
 // Invoked when received GET STRING DESCRIPTOR request
 // Application return pointer to descriptor, whose contents must exist long enough for transfer to complete
@@ -275,38 +225,37 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 
     if (index == STRID_LANGID)
     {
-        desc_str[1] = USB_LANGUAGE_ID;
+        // 语言 ID 特殊处理
+        memcpy(&_desc_str[1], string_desc_arr[STRID_LANGID], 2);
         chr_count = 1;
     }
     else
     {
-        // Note: the 0xEE index string is a Microsoft OS 1.0 Descriptors.
-        // https://docs.microsoft.com/en-us/windows-hardware/drivers/usbcon/microsoft-defined-usb-descriptors
-
-        if (!(index < sizeof(string_desc_arr) / sizeof(string_desc_arr[0])))
+        // 检查索引是否有效
+        if (index >= sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))
         {
             return NULL;
         }
 
+        // 转换 ASCII 到 UTF-16LE
         const char *str = string_desc_arr[index];
-
-        // Cap at max chars
         chr_count = (uint8_t)strlen(str);
-        if (chr_count > 64)
+
+        // 限制最大长度
+        if (chr_count > USB_DESC_STR_MAX_CHARS)
         {
-            chr_count = 64;
+            chr_count = USB_DESC_STR_MAX_CHARS;
         }
 
-        // Convert ASCII string into UTF-16
+        // 复制字符
         for (uint8_t i = 0; i < chr_count; i++)
         {
-            desc_str[1 + i] = str[i];
+            _desc_str[1 + i] = str[i];
         }
     }
 
-    // first byte is length (including header), second byte is string type (0x03)
-    desc_str[0] = (uint16_t)((((uint16_t)chr_count) * sizeof(uint16_t)) + sizeof(uint16_t));
-    desc_str[0] |= (TUSB_DESC_STRING << 8);  // 设置类型为字符串描述符 (0x03)
+    // 第一个字节是长度，第二个字节是描述符类型
+    _desc_str[0] = (TUSB_DESC_STRING << 8) | (2 * chr_count + 2);
 
-    return desc_str;
+    return _desc_str;
 }

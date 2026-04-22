@@ -24,14 +24,13 @@ static uint16_t build_battery_report(uint8_t *buffer, uint16_t reqlen)
 // 数据包: 16 0C 00 (ReportID=0x16, 状态1=0x0C, 状态2=0x00)
 static uint16_t build_status_report(uint8_t *buffer, uint16_t reqlen)
 {
-    if ((buffer == NULL) || (reqlen < 2))
+    if ((buffer == NULL) || (reqlen < 1))
     {
         return 0U;
     }
 
     buffer[0] = ups_hid_get_status_byte1();
-    buffer[1] = g_ups_config.status2.value;
-    return 2U;
+    return 1U;
 }
 
 uint16_t build_hid_input_report(uint8_t report_id, uint8_t *buffer, uint16_t reqlen)
@@ -58,8 +57,64 @@ uint16_t build_hid_input_report(uint8_t report_id, uint8_t *buffer, uint16_t req
 
 uint16_t build_hid_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t reqlen)
 {
-    // Feature Report 返回与 Input Report 相同的数据
-    return build_hid_input_report(report_id, buffer, reqlen);
+    if ((buffer == NULL) || (reqlen == 0U))
+    {
+        return 0U;
+    }
+
+    uint8_t value = 0xFF;
+
+    switch (report_id)
+    {
+    case APC_FEATURE_ID_PRODUCT:
+        value = g_ups_config.i_product;
+        break;
+
+    case APC_FEATURE_ID_SERIAL:
+        value = g_ups_config.i_serial;
+        break;
+
+    case APC_FEATURE_ID_CHEMISTRY:
+        value = 0x04;  // PbAc
+        break;
+
+    case APC_FEATURE_ID_OEM:
+        value = 0x05;  // APC
+        break;
+
+    case APC_FEATURE_ID_RECHARGEABLE:
+        value = 0x01;  // Yes
+        break;
+
+    case APC_FEATURE_ID_CAPACITY_MODE:
+        value = g_ups_config.capacity_mode;
+        break;
+
+    case APC_FEATURE_ID_FULL_CHARGE:
+        value = g_ups_config.full_charge_capacity;
+        break;
+
+    case APC_FEATURE_ID_DESIGN_CAPACITY:
+        value = g_ups_config.design_capacity;
+        break;
+
+    case APC_REPORT_ID_BATTERY:
+        return build_battery_report(buffer, reqlen);
+
+    case APC_REPORT_ID_STATUS:
+        return build_status_report(buffer, reqlen);
+
+    default:
+        return 0U;
+    }
+
+    if (reqlen >= 1)
+    {
+        buffer[0] = value;
+        return 1;
+    }
+
+    return 0U;
 }
 
 /*
