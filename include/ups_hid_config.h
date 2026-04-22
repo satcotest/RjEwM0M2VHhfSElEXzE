@@ -87,6 +87,25 @@ typedef struct {
     uint32_t report_interval_ms;       // 报告间隔 (毫秒)
 } ups_hid_config_t;
 
+// ADC 通道配置 (为以后ADC功能预留)
+typedef struct {
+    uint8_t  channel;           // ADC通道号
+    uint16_t raw_value;         // 原始ADC值
+    uint16_t voltage_mv;        // 转换后的电压值(mV)
+    float    scale_factor;      // 缩放系数
+    uint16_t offset_mv;         // 偏移量(mV)
+} adc_channel_config_t;
+
+// ADC 配置结构体
+typedef struct {
+    adc_channel_config_t vbus;      // 总线电压检测
+    adc_channel_config_t vbat;      // 电池电压检测
+    adc_channel_config_t ibus;      // 总线电流检测
+    adc_channel_config_t temp;      // 温度检测
+    uint32_t sample_interval_ms;    // 采样间隔
+    bool     enabled;               // ADC是否启用
+} adc_config_t;
+
 // 默认配置 (通用 UPS)
 #define UPS_HID_DEFAULT_CONFIG() { \
     .remaining_capacity = 100, \

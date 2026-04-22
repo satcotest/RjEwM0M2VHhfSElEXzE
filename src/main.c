@@ -7,6 +7,10 @@
 #include "ups_hid_device.h"
 #include "ups_hid_config.h"
 
+// 可选功能模块 (取消注释以启用)
+// #include "ups_adc.h"
+// #define ENABLE_ADC 1
+
 /* 函数声明 */
 void SystemClock_Config(void);
 void Error_Handler(void);
@@ -68,8 +72,17 @@ int main(void)
 
     while (1)
     {
+        // USB 任务处理
         tud_task();
+
+        // HID 报告任务
         ups_hid_periodic_task();
+
+        // ADC 任务 (取消注释以启用)
+        // #ifdef ENABLE_ADC
+        // ups_adc_periodic_task();
+        // ups_adc_update_hid_params();
+        // #endif
     }
 }
 
