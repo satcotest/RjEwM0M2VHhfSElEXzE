@@ -1,8 +1,51 @@
 #include "usbd_custom_hid_if.h"
 
-// HID Power Device UPS 报告描述符
-// 参考 TinyUSB try-tinyusb 分支的 descriptor 结构
-// 单一 Report ID (1)，同时包含 INPUT 和 FEATURE 报告
+/* ============================================================
+ * 常量定义
+ * ============================================================ */
+
+#define UPS_REPORT_ID                   (0x01u)
+
+// INPUT 报告大小 (字节)
+#define UPS_INPUT_REPORT_SIZE           (9u)
+
+// FEATURE 报告大小 (字节)
+#define UPS_FEATURE_REPORT_SIZE         (21u)
+
+// 状态位掩码 (PresentStatus)
+#define STATUS_AC_PRESENT               (0x01u)  // bit 0
+#define STATUS_CHARGING                 (0x02u)  // bit 1
+#define STATUS_DISCHARGING              (0x04u)  // bit 2
+#define STATUS_FULLY_CHARGED            (0x08u)  // bit 3
+#define STATUS_BATTERY_PRESENT          (0x10u)  // bit 4
+
+// 固定参数值
+#define CAPACITY_MODE_PERCENT           (0x02u)
+#define RECHARGEABLE_YES                (0x01u)
+#define WARNING_CAPACITY_LIMIT          (20u)
+#define REMAINING_CAPACITY_LIMIT        (10u)
+#define FULL_CHARGE_CAPACITY            (100u)
+#define DESIGN_CAPACITY                 (100u)
+#define REMAINING_TIME_LIMIT_MIN        (120u)
+#define CAPACITY_GRANULARITY            (1u)
+
+// 电气参数
+#define VOLTAGE_0_1V                    (1200u)     // 120.0V
+#define CURRENT_DISCHARGE_MA            (-500)      // 放电 500mA
+#define CURRENT_CHARGE_MA               (1000)      // 充电 1000mA
+#define RUNTIME_MULTIPLIER              (6u)        // 100% = 600分钟
+
+// 字符串索引
+#define IDX_MANUFACTURER                (0x01u)
+#define IDX_PRODUCT                     (0x02u)
+#define IDX_SERIAL_NUMBER               (0x03u)
+#define IDX_NAME                        (0x02u)
+#define IDX_DEVICE_CHEMISTRY            (0x01u)
+
+/* ============================================================
+ * HID Report Descriptor
+ * ============================================================ */
+
 __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[] __ALIGN_END =
 {
     // === Power Device (UPS) Application Collection ===
@@ -15,10 +58,9 @@ __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[] __ALIGN_END =
     // =====================================================
     0x09, 0x24,        //   USAGE (Power Summary)
     0xA1, 0x02,        //   COLLECTION (Logical)
-    0x85, 0x01,        //     REPORT_ID (1)
+    0x85, UPS_REPORT_ID, // REPORT_ID (1)
 
     // === INPUT 报告 (实时数据) ===
-    // 所有字段都是 8 位或 16 位，确保字节对齐
 
     // RemainingCapacity (Input) - 8位百分比
     0x05, 0x85,        //     USAGE_PAGE (Battery System)
@@ -72,7 +114,6 @@ __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[] __ALIGN_END =
     0x81, 0x01,        //     INPUT (Constant)
 
     // === FEATURE 报告 (配置/握手数据) ===
-    // 所有字段都是 8 位对齐
 
     // 字符串索引 (8位)
     0x05, 0x84,        //     USAGE_PAGE (Power Device)
@@ -169,172 +210,226 @@ __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[] __ALIGN_END =
     0xC0               // END_COLLECTION (Application)
 };
 
+/* ============================================================
+ * UPS 状态结构体
+ * ============================================================ */
+
+typedef struct
+{
+    uint8_t remaining_capacity;  // 0-100
+    uint8_t ac_present;          // 0 或 1
+    uint8_t charging;            // 0 或 1
+    uint8_t discharging;         // 0 或 1
+} UPS_State_t;
+
+static UPS_State_t s_ups_state =
+{
+    .remaining_capacity = 100,
+    .ac_present         = 1,
+    .charging           = 0,
+    .discharging        = 1
+};
+
+/* ============================================================
+ * 静态辅助函数
+ * ============================================================ */
+
+/**
+ * @brief 计算运行时间 (分钟)
+ * @return 如果AC连接返回0，否则根据剩余容量计算
+ */
+static inline uint16_t calc_runtime_to_empty(void)
+{
+    if (s_ups_state.ac_present)
+    {
+        return 0u;
+    }
+    return (uint16_t)(s_ups_state.remaining_capacity * RUNTIME_MULTIPLIER);
+}
+
+/**
+ * @brief 计算当前电流 (mA)
+ * @return 有符号电流值
+ */
+static inline int16_t calc_current(void)
+{
+    if (s_ups_state.discharging)
+    {
+        return CURRENT_DISCHARGE_MA;
+    }
+    if (s_ups_state.charging)
+    {
+        return CURRENT_CHARGE_MA;
+    }
+    return 0;
+}
+
+/**
+ * @brief 打包 PresentStatus 位字段
+ * @return 8位状态标志
+ */
+static uint8_t pack_present_status(void)
+{
+    uint8_t status = STATUS_BATTERY_PRESENT;
+
+    if (s_ups_state.ac_present)
+    {
+        status |= STATUS_AC_PRESENT;
+    }
+    if (s_ups_state.charging)
+    {
+        status |= STATUS_CHARGING;
+    }
+    if (s_ups_state.discharging)
+    {
+        status |= STATUS_DISCHARGING;
+    }
+    if (s_ups_state.remaining_capacity >= 100)
+    {
+        status |= STATUS_FULLY_CHARGED;
+    }
+    return status;
+}
+
+/* ============================================================
+ * USB HID 回调函数
+ * ============================================================ */
+
 static int8_t CUSTOM_HID_Init_FS(void)
 {
-  return (USBD_OK);
+    return USBD_OK;
 }
 
 static int8_t CUSTOM_HID_DeInit_FS(void)
 {
-  return (USBD_OK);
+    return USBD_OK;
 }
 
 static int8_t CUSTOM_HID_OutEvent_FS(uint8_t event_idx, uint8_t state)
 {
-  UNUSED(event_idx);
-  UNUSED(state);
-  return (USBD_OK);
+    UNUSED(event_idx);
+    UNUSED(state);
+    return USBD_OK;
 }
 
-// UPS状态变量
-static uint8_t s_remaining_capacity = 100;
-static uint8_t s_ac_present = 1;
-static uint8_t s_charging = 0;
-static uint8_t s_discharging = 1;
+/* ============================================================
+ * 公共接口
+ * ============================================================ */
 
-// 设置UPS状态
+/**
+ * @brief 设置UPS状态
+ * @param ac_present   1=AC连接, 0=电池供电
+ * @param discharging  1=放电中, 0=未放电
+ * @param capacity     剩余容量百分比 (0-100)
+ */
 void ups_set_status(uint8_t ac_present, uint8_t discharging, uint8_t capacity)
 {
-    s_ac_present = ac_present;
-    s_discharging = discharging;
-    s_remaining_capacity = capacity;
-    s_charging = ac_present && (capacity < 100);
+    // 限制容量范围
+    if (capacity > 100u)
+    {
+        capacity = 100u;
+    }
+
+    s_ups_state.ac_present      = ac_present ? 1u : 0u;
+    s_ups_state.discharging     = discharging ? 1u : 0u;
+    s_ups_state.remaining_capacity = capacity;
+    s_ups_state.charging        = (ac_present && (capacity < 100u)) ? 1u : 0u;
 }
 
-// 打包 PresentStatus 位字段
-static uint8_t pack_present_status(void)
-{
-    uint8_t status = 0;
-    if (s_ac_present)       status |= 0x01;  // bit 0: ACPresent
-    if (s_charging)         status |= 0x02;  // bit 1: Charging
-    if (s_discharging)      status |= 0x04;  // bit 2: Discharging
-    if (s_remaining_capacity >= 100) status |= 0x08;  // bit 3: FullyCharged
-    status |= 0x10;                          // bit 4: BatteryPresent
-    return status;
-}
-
-// 构建INPUT报告 - Report ID 1
-// 格式: [ReportID(1)] [RemainingCapacity(1)] [RunTimeToEmpty(2)] [Voltage(2)] [Current(2)] [PresentStatus(1)]
-// 总计: 9字节
+/**
+ * @brief 构建 INPUT 报告
+ *
+ * 格式:
+ *   [ReportID(1)] [RemainingCapacity(1)] [RunTimeToEmpty(2)] [Voltage(2)] [Current(2)] [PresentStatus(1)]
+ * 总计: 9字节
+ *
+ * @param buffer 输出缓冲区
+ * @param len    缓冲区大小
+ * @return 实际写入的字节数，失败返回0
+ */
 uint16_t ups_build_input_report(uint8_t *buffer, uint16_t len)
 {
-    if (len < 9 || buffer == NULL)
+    if ((buffer == NULL) || (len < UPS_INPUT_REPORT_SIZE))
     {
-        return 0;
+        return 0u;
     }
 
+    const uint16_t runtime  = calc_runtime_to_empty();
+    const int16_t  current  = calc_current();
     uint8_t idx = 0;
 
-    // Report ID
-    buffer[idx++] = 0x01;
-
-    // RemainingCapacity (1字节) - 百分比
-    buffer[idx++] = s_remaining_capacity;
-
-    // RunTimeToEmpty (2字节) - 分钟
-    uint16_t runtime = 0;
-    if (!s_ac_present)
-    {
-        runtime = (uint16_t)(s_remaining_capacity * 6); // 模拟: 100% = 600分钟
-    }
+    buffer[idx++] = UPS_REPORT_ID;
+    buffer[idx++] = s_ups_state.remaining_capacity;
     buffer[idx++] = LOBYTE(runtime);
     buffer[idx++] = HIBYTE(runtime);
-
-    // Voltage (2字节) - 0.1V单位
-    uint16_t voltage = 1200; // 120.0V
-    buffer[idx++] = LOBYTE(voltage);
-    buffer[idx++] = HIBYTE(voltage);
-
-    // Current (2字节) - mA单位
-    int16_t current = 0;
-    if (s_discharging)
-    {
-        current = -500; // 放电500mA
-    }
-    else if (s_charging)
-    {
-        current = 1000; // 充电1000mA
-    }
+    buffer[idx++] = LOBYTE(VOLTAGE_0_1V);
+    buffer[idx++] = HIBYTE(VOLTAGE_0_1V);
     buffer[idx++] = LOBYTE((uint16_t)current);
     buffer[idx++] = HIBYTE((uint16_t)current);
-
-    // PresentStatus (1字节)
     buffer[idx++] = pack_present_status();
 
     return idx;
 }
 
-// 构建FEATURE报告 - Report ID 1
-// 格式:
-//   [ReportID(1)] [iManufacturer(1)] [iProduct(1)] [iSerialNumber(1)] [iName(1)] [iDeviceChemistry(1)]
-//   [CapacityMode(1)] [Rechargeable(1)]
-//   [WarningCapacityLimit(1)] [RemainingCapacityLimit(1)]
-//   [RemainingCapacity(1)] [FullChargeCapacity(1)] [DesignCapacity(1)]
-//   [RunTimeToEmpty(2)] [RemainingTimeLimit(2)]
-//   [CapacityGranularity1(1)] [CapacityGranularity2(1)]
-//   [PresentStatus(1)]
-// 总计: 21字节
+/**
+ * @brief 构建 FEATURE 报告
+ *
+ * 格式:
+ *   [ReportID(1)] [iManufacturer(1)] [iProduct(1)] [iSerialNumber(1)] [iName(1)] [iDeviceChemistry(1)]
+ *   [CapacityMode(1)] [Rechargeable(1)]
+ *   [WarningCapacityLimit(1)] [RemainingCapacityLimit(1)]
+ *   [RemainingCapacity(1)] [FullChargeCapacity(1)] [DesignCapacity(1)]
+ *   [RunTimeToEmpty(2)] [RemainingTimeLimit(2)]
+ *   [CapacityGranularity1(1)] [CapacityGranularity2(1)]
+ *   [PresentStatus(1)]
+ * 总计: 21字节
+ *
+ * @param buffer 输出缓冲区
+ * @param len    缓冲区大小
+ * @return 实际写入的字节数，失败返回0
+ */
 uint16_t ups_build_feature_report(uint8_t *buffer, uint16_t len)
 {
-    if (len < 21 || buffer == NULL)
+    if ((buffer == NULL) || (len < UPS_FEATURE_REPORT_SIZE))
     {
-        return 0;
+        return 0u;
     }
 
+    const uint16_t runtime = calc_runtime_to_empty();
     uint8_t idx = 0;
 
-    // Report ID
-    buffer[idx++] = 0x01;
-
-    // 字符串索引 (各1字节)
-    buffer[idx++] = 0x01;  // iManufacturer
-    buffer[idx++] = 0x02;  // iProduct
-    buffer[idx++] = 0x03;  // iSerialNumber
-    buffer[idx++] = 0x02;  // iName
-    buffer[idx++] = 0x01;  // iDeviceChemistry
-
-    // CapacityMode (1字节) - 2=百分比
-    buffer[idx++] = 0x02;
-
-    // Rechargeable (1字节)
-    buffer[idx++] = 0x01;
-
-    // 容量限制 (各1字节)
-    buffer[idx++] = 20;   // WarningCapacityLimit
-    buffer[idx++] = 10;   // RemainingCapacityLimit
-
-    // 容量值 (各1字节)
-    buffer[idx++] = s_remaining_capacity;  // RemainingCapacity
-    buffer[idx++] = 100;  // FullChargeCapacity
-    buffer[idx++] = 100;  // DesignCapacity
-
-    // RunTimeToEmpty (2字节)
-    uint16_t runtime = 0;
-    if (!s_ac_present)
-    {
-        runtime = (uint16_t)(s_remaining_capacity * 6);
-    }
+    buffer[idx++] = UPS_REPORT_ID;
+    buffer[idx++] = IDX_MANUFACTURER;
+    buffer[idx++] = IDX_PRODUCT;
+    buffer[idx++] = IDX_SERIAL_NUMBER;
+    buffer[idx++] = IDX_NAME;
+    buffer[idx++] = IDX_DEVICE_CHEMISTRY;
+    buffer[idx++] = CAPACITY_MODE_PERCENT;
+    buffer[idx++] = RECHARGEABLE_YES;
+    buffer[idx++] = WARNING_CAPACITY_LIMIT;
+    buffer[idx++] = REMAINING_CAPACITY_LIMIT;
+    buffer[idx++] = s_ups_state.remaining_capacity;
+    buffer[idx++] = FULL_CHARGE_CAPACITY;
+    buffer[idx++] = DESIGN_CAPACITY;
     buffer[idx++] = LOBYTE(runtime);
     buffer[idx++] = HIBYTE(runtime);
-
-    // RemainingTimeLimit (2字节)
-    buffer[idx++] = 0x78;  // 120 minutes LSB
-    buffer[idx++] = 0x00;  // 120 minutes MSB
-
-    // 容量粒度 (各1字节)
-    buffer[idx++] = 1;    // CapacityGranularity1
-    buffer[idx++] = 1;    // CapacityGranularity2
-
-    // PresentStatus (1字节)
+    buffer[idx++] = LOBYTE(REMAINING_TIME_LIMIT_MIN);
+    buffer[idx++] = HIBYTE(REMAINING_TIME_LIMIT_MIN);
+    buffer[idx++] = CAPACITY_GRANULARITY;
+    buffer[idx++] = CAPACITY_GRANULARITY;
     buffer[idx++] = pack_present_status();
 
     return idx;
 }
+
+/* ============================================================
+ * USB 接口回调结构体
+ * ============================================================ */
 
 USBD_CUSTOM_HID_ItfTypeDef USBD_CustomHID_fops_FS =
 {
-  CUSTOM_HID_ReportDesc_FS,
-  CUSTOM_HID_Init_FS,
-  CUSTOM_HID_DeInit_FS,
-  CUSTOM_HID_OutEvent_FS
+    CUSTOM_HID_ReportDesc_FS,
+    CUSTOM_HID_Init_FS,
+    CUSTOM_HID_DeInit_FS,
+    CUSTOM_HID_OutEvent_FS
 };
