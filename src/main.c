@@ -36,6 +36,8 @@ int main(void)
 
     uint32_t last_report_time = 0;
     uint8_t capacity = 100;
+    uint8_t ac_present = 1;      // AC初始存在
+    uint8_t discharging = 0;     // 初始不放电
 
     while (1)
     {
@@ -46,14 +48,28 @@ int main(void)
         {
             last_report_time = now;
 
-            // 模拟电量缓慢下降
-            if (capacity > 0)
+            // 模拟电量变化逻辑：
+            // - AC存在时：电量保持100%（充满）
+            // - AC断开时：电量缓慢下降
+            if (!ac_present && capacity > 0)
             {
                 capacity--;
+                discharging = 1;
+            }
+            else if (ac_present && capacity < 100)
+            {
+                // AC存在且电量未满：缓慢充电
+                capacity++;
+                discharging = 0;
+            }
+            else if (ac_present && capacity == 100)
+            {
+                // AC存在且电量满：保持充满状态，不放电
+                discharging = 0;
             }
 
             // 更新UPS状态
-            ups_set_status(1, 0, capacity);
+            ups_set_status(ac_present, discharging, capacity);
 
             // 构建INPUT报告数据并通过中断端点发送
             uint8_t report[16];
