@@ -1,16 +1,35 @@
 #include "usbd_custom_hid_if.h"
 
 /* ============================================================
+ * 编译期断言与工具宏
+ * ============================================================ */
+
+#ifndef COUNTOF
+#define COUNTOF(a)                      (sizeof(a) / sizeof((a)[0]))
+#endif
+
+#ifndef CONCAT
+#define _CONCAT(a, b)                   a ## b
+#define CONCAT(a, b)                    _CONCAT(a, b)
+#endif
+
+/* 编译期断言：确保结构体大小与报告描述符一致 */
+#define STATIC_ASSERT(cond, msg) \
+    typedef char CONCAT(static_assert_failed_at_line_, __LINE__)[(cond) ? 1 : -1]
+
+/* 小端序写入宏（无函数调用开销，可被编译器优化为单条 STRH） */
+#define WRITE_U8(buf, idx, val)         ((buf)[(idx)] = (uint8_t)(val))
+#define WRITE_U16_LE(buf, idx, val)     do { \
+                                            (buf)[(idx)]     = (uint8_t)((val) & 0xFFu); \
+                                            (buf)[(idx) + 1] = (uint8_t)(((val) >> 8) & 0xFFu); \
+                                        } while(0)
+#define WRITE_I16_LE(buf, idx, val)     WRITE_U16_LE((buf), (idx), (uint16_t)(val))
+
+/* ============================================================
  * 常量定义
  * ============================================================ */
 
 #define UPS_REPORT_ID                   (0x01u)
-
-// INPUT 报告大小 (字节)
-#define UPS_INPUT_REPORT_SIZE           (9u)
-
-// FEATURE 报告大小 (字节)
-#define UPS_FEATURE_REPORT_SIZE         (21u)
 
 // 状态位掩码 (PresentStatus)
 #define STATUS_AC_PRESENT               (0x01u)  // bit 0
@@ -41,6 +60,49 @@
 #define IDX_SERIAL_NUMBER               (0x03u)
 #define IDX_NAME                        (0x02u)
 #define IDX_DEVICE_CHEMISTRY            (0x01u)
+
+/* ============================================================
+ * 报告结构体定义（与 HID Report Descriptor 严格对应）
+ *
+ * 使用 __packed 确保无填充字节，与 USB 传输格式完全一致。
+ * 注意：Cortex-M3 支持非对齐访问，但 __packed 仍是最安全的选择。
+ * ============================================================ */
+
+typedef struct __attribute__((packed))
+{
+    uint8_t  report_id;             // 0
+    uint8_t  remaining_capacity;    // 1
+    uint16_t runtime_to_empty;      // 2-3
+    uint16_t voltage;               // 4-5
+    int16_t  current;               // 6-7
+    uint8_t  present_status;        // 8
+} UPS_InputReport_t;
+
+STATIC_ASSERT(sizeof(UPS_InputReport_t) == 9, UPS_InputReport_size_mismatch);
+
+typedef struct __attribute__((packed))
+{
+    uint8_t  report_id;             // 0
+    uint8_t  iManufacturer;         // 1
+    uint8_t  iProduct;              // 2
+    uint8_t  iSerialNumber;         // 3
+    uint8_t  iName;                 // 4
+    uint8_t  iDeviceChemistry;      // 5
+    uint8_t  capacity_mode;         // 6
+    uint8_t  rechargeable;          // 7
+    uint8_t  warning_capacity_limit;// 8
+    uint8_t  remaining_capacity_limit;// 9
+    uint8_t  remaining_capacity;    // 10
+    uint8_t  full_charge_capacity;  // 11
+    uint8_t  design_capacity;       // 12
+    uint16_t runtime_to_empty;      // 13-14
+    uint16_t remaining_time_limit;  // 15-16
+    uint8_t  capacity_granularity1; // 17
+    uint8_t  capacity_granularity2; // 18
+    uint8_t  present_status;        // 19
+} UPS_FeatureReport_t;
+
+STATIC_ASSERT(sizeof(UPS_FeatureReport_t) == 20, UPS_FeatureReport_size_mismatch);
 
 /* ============================================================
  * HID Report Descriptor
@@ -211,15 +273,25 @@ __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[] __ALIGN_END =
 };
 
 /* ============================================================
- * UPS 状态结构体
+ * UPS 状态机
  * ============================================================ */
+
+typedef enum
+{
+    UPS_STATE_UNKNOWN = 0,
+    UPS_STATE_ON_BATTERY,       // 电池供电（放电中）
+    UPS_STATE_CHARGING,         // AC连接，充电中
+    UPS_STATE_FULLY_CHARGED,    // AC连接，已充满
+    UPS_STATE_FAULT             // 故障状态（预留）
+} UPS_RunState_t;
 
 typedef struct
 {
-    uint8_t remaining_capacity;  // 0-100
-    uint8_t ac_present;          // 0 或 1
-    uint8_t charging;            // 0 或 1
-    uint8_t discharging;         // 0 或 1
+    uint8_t          remaining_capacity;  // 0-100
+    uint8_t          ac_present;          // 布尔
+    uint8_t          charging;            // 布尔
+    uint8_t          discharging;         // 布尔
+    UPS_RunState_t   run_state;           // 当前运行状态
 } UPS_State_t;
 
 static UPS_State_t s_ups_state =
@@ -227,12 +299,30 @@ static UPS_State_t s_ups_state =
     .remaining_capacity = 100,
     .ac_present         = 1,
     .charging           = 0,
-    .discharging        = 1
+    .discharging        = 1,
+    .run_state          = UPS_STATE_ON_BATTERY
 };
 
 /* ============================================================
  * 静态辅助函数
  * ============================================================ */
+
+/**
+ * @brief 根据当前状态推导运行状态
+ */
+static inline UPS_RunState_t derive_run_state(uint8_t ac_present,
+                                               uint8_t capacity)
+{
+    if (!ac_present)
+    {
+        return UPS_STATE_ON_BATTERY;
+    }
+    if (capacity >= 100u)
+    {
+        return UPS_STATE_FULLY_CHARGED;
+    }
+    return UPS_STATE_CHARGING;
+}
 
 /**
  * @brief 计算运行时间 (分钟)
@@ -253,15 +343,16 @@ static inline uint16_t calc_runtime_to_empty(void)
  */
 static inline int16_t calc_current(void)
 {
-    if (s_ups_state.discharging)
+    switch (s_ups_state.run_state)
     {
-        return CURRENT_DISCHARGE_MA;
+        case UPS_STATE_ON_BATTERY:
+            return CURRENT_DISCHARGE_MA;
+        case UPS_STATE_CHARGING:
+            return CURRENT_CHARGE_MA;
+        case UPS_STATE_FULLY_CHARGED:
+        default:
+            return 0;
     }
-    if (s_ups_state.charging)
-    {
-        return CURRENT_CHARGE_MA;
-    }
-    return 0;
 }
 
 /**
@@ -284,7 +375,7 @@ static uint8_t pack_present_status(void)
     {
         status |= STATUS_DISCHARGING;
     }
-    if (s_ups_state.remaining_capacity >= 100)
+    if (s_ups_state.remaining_capacity >= 100u)
     {
         status |= STATUS_FULLY_CHARGED;
     }
@@ -324,24 +415,28 @@ static int8_t CUSTOM_HID_OutEvent_FS(uint8_t event_idx, uint8_t state)
  */
 void ups_set_status(uint8_t ac_present, uint8_t discharging, uint8_t capacity)
 {
-    // 限制容量范围
     if (capacity > 100u)
     {
         capacity = 100u;
     }
 
-    s_ups_state.ac_present      = ac_present ? 1u : 0u;
-    s_ups_state.discharging     = discharging ? 1u : 0u;
+    s_ups_state.ac_present  = ac_present ? 1u : 0u;
+    s_ups_state.discharging = discharging ? 1u : 0u;
     s_ups_state.remaining_capacity = capacity;
-    s_ups_state.charging        = (ac_present && (capacity < 100u)) ? 1u : 0u;
+    s_ups_state.charging    = (ac_present && (capacity < 100u)) ? 1u : 0u;
+    s_ups_state.run_state   = derive_run_state(s_ups_state.ac_present, capacity);
+}
+
+/**
+ * @brief 获取当前UPS运行状态
+ */
+UPS_RunState_t ups_get_run_state(void)
+{
+    return s_ups_state.run_state;
 }
 
 /**
  * @brief 构建 INPUT 报告
- *
- * 格式:
- *   [ReportID(1)] [RemainingCapacity(1)] [RunTimeToEmpty(2)] [Voltage(2)] [Current(2)] [PresentStatus(1)]
- * 总计: 9字节
  *
  * @param buffer 输出缓冲区
  * @param len    缓冲区大小
@@ -349,40 +444,25 @@ void ups_set_status(uint8_t ac_present, uint8_t discharging, uint8_t capacity)
  */
 uint16_t ups_build_input_report(uint8_t *buffer, uint16_t len)
 {
-    if ((buffer == NULL) || (len < UPS_INPUT_REPORT_SIZE))
+    if ((buffer == NULL) || (len < sizeof(UPS_InputReport_t)))
     {
         return 0u;
     }
 
-    const uint16_t runtime  = calc_runtime_to_empty();
-    const int16_t  current  = calc_current();
-    uint8_t idx = 0;
+    UPS_InputReport_t *rpt = (UPS_InputReport_t *)buffer;
 
-    buffer[idx++] = UPS_REPORT_ID;
-    buffer[idx++] = s_ups_state.remaining_capacity;
-    buffer[idx++] = LOBYTE(runtime);
-    buffer[idx++] = HIBYTE(runtime);
-    buffer[idx++] = LOBYTE(VOLTAGE_0_1V);
-    buffer[idx++] = HIBYTE(VOLTAGE_0_1V);
-    buffer[idx++] = LOBYTE((uint16_t)current);
-    buffer[idx++] = HIBYTE((uint16_t)current);
-    buffer[idx++] = pack_present_status();
+    rpt->report_id          = UPS_REPORT_ID;
+    rpt->remaining_capacity = s_ups_state.remaining_capacity;
+    rpt->runtime_to_empty   = calc_runtime_to_empty();
+    rpt->voltage            = VOLTAGE_0_1V;
+    rpt->current            = calc_current();
+    rpt->present_status     = pack_present_status();
 
-    return idx;
+    return sizeof(UPS_InputReport_t);
 }
 
 /**
  * @brief 构建 FEATURE 报告
- *
- * 格式:
- *   [ReportID(1)] [iManufacturer(1)] [iProduct(1)] [iSerialNumber(1)] [iName(1)] [iDeviceChemistry(1)]
- *   [CapacityMode(1)] [Rechargeable(1)]
- *   [WarningCapacityLimit(1)] [RemainingCapacityLimit(1)]
- *   [RemainingCapacity(1)] [FullChargeCapacity(1)] [DesignCapacity(1)]
- *   [RunTimeToEmpty(2)] [RemainingTimeLimit(2)]
- *   [CapacityGranularity1(1)] [CapacityGranularity2(1)]
- *   [PresentStatus(1)]
- * 总计: 21字节
  *
  * @param buffer 输出缓冲区
  * @param len    缓冲区大小
@@ -390,36 +470,33 @@ uint16_t ups_build_input_report(uint8_t *buffer, uint16_t len)
  */
 uint16_t ups_build_feature_report(uint8_t *buffer, uint16_t len)
 {
-    if ((buffer == NULL) || (len < UPS_FEATURE_REPORT_SIZE))
+    if ((buffer == NULL) || (len < sizeof(UPS_FeatureReport_t)))
     {
         return 0u;
     }
 
-    const uint16_t runtime = calc_runtime_to_empty();
-    uint8_t idx = 0;
+    UPS_FeatureReport_t *rpt = (UPS_FeatureReport_t *)buffer;
 
-    buffer[idx++] = UPS_REPORT_ID;
-    buffer[idx++] = IDX_MANUFACTURER;
-    buffer[idx++] = IDX_PRODUCT;
-    buffer[idx++] = IDX_SERIAL_NUMBER;
-    buffer[idx++] = IDX_NAME;
-    buffer[idx++] = IDX_DEVICE_CHEMISTRY;
-    buffer[idx++] = CAPACITY_MODE_PERCENT;
-    buffer[idx++] = RECHARGEABLE_YES;
-    buffer[idx++] = WARNING_CAPACITY_LIMIT;
-    buffer[idx++] = REMAINING_CAPACITY_LIMIT;
-    buffer[idx++] = s_ups_state.remaining_capacity;
-    buffer[idx++] = FULL_CHARGE_CAPACITY;
-    buffer[idx++] = DESIGN_CAPACITY;
-    buffer[idx++] = LOBYTE(runtime);
-    buffer[idx++] = HIBYTE(runtime);
-    buffer[idx++] = LOBYTE(REMAINING_TIME_LIMIT_MIN);
-    buffer[idx++] = HIBYTE(REMAINING_TIME_LIMIT_MIN);
-    buffer[idx++] = CAPACITY_GRANULARITY;
-    buffer[idx++] = CAPACITY_GRANULARITY;
-    buffer[idx++] = pack_present_status();
+    rpt->report_id                = UPS_REPORT_ID;
+    rpt->iManufacturer            = IDX_MANUFACTURER;
+    rpt->iProduct                 = IDX_PRODUCT;
+    rpt->iSerialNumber            = IDX_SERIAL_NUMBER;
+    rpt->iName                    = IDX_NAME;
+    rpt->iDeviceChemistry         = IDX_DEVICE_CHEMISTRY;
+    rpt->capacity_mode            = CAPACITY_MODE_PERCENT;
+    rpt->rechargeable             = RECHARGEABLE_YES;
+    rpt->warning_capacity_limit   = WARNING_CAPACITY_LIMIT;
+    rpt->remaining_capacity_limit = REMAINING_CAPACITY_LIMIT;
+    rpt->remaining_capacity       = s_ups_state.remaining_capacity;
+    rpt->full_charge_capacity     = FULL_CHARGE_CAPACITY;
+    rpt->design_capacity          = DESIGN_CAPACITY;
+    rpt->runtime_to_empty         = calc_runtime_to_empty();
+    rpt->remaining_time_limit     = REMAINING_TIME_LIMIT_MIN;
+    rpt->capacity_granularity1    = CAPACITY_GRANULARITY;
+    rpt->capacity_granularity2    = CAPACITY_GRANULARITY;
+    rpt->present_status           = pack_present_status();
 
-    return idx;
+    return sizeof(UPS_FeatureReport_t);
 }
 
 /* ============================================================
