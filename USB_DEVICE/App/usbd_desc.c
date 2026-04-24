@@ -62,8 +62,8 @@
   * @{
   */
 
-#define USBD_VID                     0x0483
-#define USBD_PID_FS                  0x5750
+#define USBD_VID                     0x051D
+#define USBD_PID_FS                  0x0002
 #define USBD_LANGID_STRING           0x0409
 #define USBD_BCD_DEVICE              0x0100
 #define USBD_BCD_USB                 0x0200

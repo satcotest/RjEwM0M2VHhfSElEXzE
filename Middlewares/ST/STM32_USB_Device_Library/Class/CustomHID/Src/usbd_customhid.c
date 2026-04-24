@@ -45,6 +45,7 @@ EndBSPDependencies */
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_customhid.h"
 #include "usbd_ctlreq.h"
+#include "usbd_custom_hid_if.h"
 
 
 /** @addtogroup STM32_USB_DEVICE_LIBRARY
@@ -388,10 +389,18 @@ static uint8_t  USBD_CUSTOM_HID_Init(USBD_HandleTypeDef *pdev,
     hhid->state = CUSTOM_HID_IDLE;
     ((USBD_CUSTOM_HID_ItfTypeDef *)pdev->pUserData)->Init();
 
-    USBD_CUSTOM_HID_InReportBuf[0] = 0x01;
-    USBD_CUSTOM_HID_InReportBuf[1] = 0b00000101;
-    USBD_CUSTOM_HID_InReportBuf[2] = 100;
-    USBD_CUSTOM_HID_InReportLen = 3;
+    // 默认报告数据 - 9字节INPUT报告格式
+    // [ReportID(1)] [RemainingCapacity(1)] [RunTimeToEmpty(2)] [Voltage(2)] [Current(2)] [PresentStatus(1)]
+    USBD_CUSTOM_HID_InReportBuf[0] = 0x01;  // Report ID
+    USBD_CUSTOM_HID_InReportBuf[1] = 100;   // RemainingCapacity = 100%
+    USBD_CUSTOM_HID_InReportBuf[2] = 0x00;  // RunTimeToEmpty LSB
+    USBD_CUSTOM_HID_InReportBuf[3] = 0x00;  // RunTimeToEmpty MSB
+    USBD_CUSTOM_HID_InReportBuf[4] = 0xB0;  // Voltage LSB = 1200 (0x04B0)
+    USBD_CUSTOM_HID_InReportBuf[5] = 0x04;  // Voltage MSB
+    USBD_CUSTOM_HID_InReportBuf[6] = 0x00;  // Current LSB
+    USBD_CUSTOM_HID_InReportBuf[7] = 0x00;  // Current MSB
+    USBD_CUSTOM_HID_InReportBuf[8] = 0x1F;  // PresentStatus: AC present + Charging + Discharging + FullyCharged + Battery present
+    USBD_CUSTOM_HID_InReportLen = 9;
 
     USBD_LL_PrepareReceive(pdev, CUSTOM_HID_EPOUT_ADDR, hhid->Report_buf,
                            USBD_CUSTOMHID_OUTREPORT_BUF_SIZE);
@@ -471,17 +480,48 @@ static uint8_t  USBD_CUSTOM_HID_Setup(USBD_HandleTypeDef *pdev,
           break;
 
         case CUSTOM_HID_REQ_GET_REPORT:
-          // 处理Feature Report请求（wValue=0x0301）
-          if (USBD_CUSTOM_HID_InReportLen > 0U)
           {
-            USBD_CtlSendData(pdev, USBD_CUSTOM_HID_InReportBuf,
-                             MIN(USBD_CUSTOM_HID_InReportLen, req->wLength));
-          }
-          else
-          {
-            // 即使缓冲区为空，也返回默认的100%电量数据（包含Report ID）
-            uint8_t default_report[3] = {0x01, 0b00000101, 100};
-            USBD_CtlSendData(pdev, default_report, MIN(3, req->wLength));
+            // wValue高字节 = 报告类型 (1=Input, 3=Feature)
+            // wValue低字节 = Report ID
+            uint8_t report_type = (uint8_t)(req->wValue >> 8);
+            /* uint8_t report_id = (uint8_t)(req->wValue & 0xFF); */
+
+            if (report_type == 0x03)  // Feature Report
+            {
+              // 构建 FEATURE 报告
+              uint8_t feature_buf[32];
+              uint16_t feature_len = ups_build_feature_report(feature_buf, sizeof(feature_buf));
+              if (feature_len > 0)
+              {
+                USBD_CtlSendData(pdev, feature_buf, MIN(feature_len, req->wLength));
+              }
+              else
+              {
+                USBD_CtlError(pdev, req);
+                ret = USBD_FAIL;
+              }
+            }
+            else  // Input Report (report_type == 0x01)
+            {
+              if (USBD_CUSTOM_HID_InReportLen > 0U)
+              {
+                USBD_CtlSendData(pdev, USBD_CUSTOM_HID_InReportBuf,
+                                 MIN(USBD_CUSTOM_HID_InReportLen, req->wLength));
+              }
+              else
+              {
+                // 默认9字节INPUT报告数据
+                uint8_t default_report[9] = {
+                  0x01,  // Report ID
+                  100,   // RemainingCapacity = 100%
+                  0x00, 0x00,  // RunTimeToEmpty = 0
+                  0xB0, 0x04,  // Voltage = 1200 (120.0V)
+                  0x00, 0x00,  // Current = 0
+                  0x1F   // PresentStatus: AC present + Charging + Discharging + FullyCharged + Battery present
+                };
+                USBD_CtlSendData(pdev, default_report, MIN(9, req->wLength));
+              }
+            }
           }
           break;
 

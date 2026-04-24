@@ -55,8 +55,8 @@ int main(void)
             // 更新UPS状态
             ups_set_status(1, 0, capacity);
 
-            // 构建并发送输入报告
-            uint8_t report[8];
+            // 构建INPUT报告数据并通过中断端点发送
+            uint8_t report[16];
             uint16_t len = ups_build_input_report(report, sizeof(report));
             if (len > 0)
             {
