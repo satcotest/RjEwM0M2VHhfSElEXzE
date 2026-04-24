@@ -115,7 +115,7 @@ typedef struct {
     .battery_voltage = 120, \
     .battery_current = 500, \
     .temperature = 250, \
-    .remaining_capacity = 100, \
+    .remaining_capacity = 98, \
     .full_charge_capacity = 100, \
     .design_capacity = 100, \
     .warning_capacity_limit = 20, \
@@ -123,7 +123,7 @@ typedef struct {
     .capacity_mode = CAPACITY_MODE_PERCENT, \
     .capacity_granularity_1 = 1, \
     .capacity_granularity_2 = 1, \
-    .status1 = { .value = 0x4F }, \
+    .status1 = { .value = 0x43 }, \
     .status2 = { .value = 0x00 }, \
     .i_manufacturer = 1, \
     .i_product = 2, \
