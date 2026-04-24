@@ -114,6 +114,17 @@ typedef enum
     UPS_STATE_FAULT
 } UPS_RunState_t;
 
+/* 输入报告结构体（供 main.c 等外部模块使用） */
+typedef struct __attribute__((packed))
+{
+    uint8_t  report_id;
+    uint8_t  remaining_capacity;
+    uint16_t runtime_to_empty;
+    uint16_t voltage;
+    int16_t  current;
+    uint8_t  present_status;
+} UPS_InputReport_t;
+
 void ups_set_status(uint8_t ac_present, uint8_t discharging, uint8_t capacity);
 UPS_RunState_t ups_get_run_state(void);
 uint16_t ups_build_input_report(uint8_t *buffer, uint16_t len);

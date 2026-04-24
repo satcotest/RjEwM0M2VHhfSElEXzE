@@ -52,16 +52,6 @@
  * 报告结构体定义（与 HID Report Descriptor 严格对应）
  * ============================================================ */
 
-typedef struct __attribute__((packed))
-{
-    uint8_t  report_id;             // 0
-    uint8_t  remaining_capacity;    // 1
-    uint16_t runtime_to_empty;      // 2-3
-    uint16_t voltage;               // 4-5
-    int16_t  current;               // 6-7
-    uint8_t  present_status;        // 8
-} UPS_InputReport_t;
-
 STATIC_ASSERT(sizeof(UPS_InputReport_t) == 9);
 
 typedef struct __attribute__((packed))
