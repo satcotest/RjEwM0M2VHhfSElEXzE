@@ -104,7 +104,9 @@ extern USBD_CUSTOM_HID_ItfTypeDef USBD_CustomHID_fops_FS;
   */
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-
+void ups_set_status(uint8_t ac_present, uint8_t discharging, uint8_t capacity);
+uint16_t ups_build_input_report(uint8_t *buffer, uint16_t len);
+uint16_t ups_build_feature_report(uint8_t report_id, uint8_t *buffer, uint16_t len);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**
