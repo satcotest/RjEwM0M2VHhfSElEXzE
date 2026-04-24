@@ -33,17 +33,22 @@ void ups_hid_set_status(bool ac_present, bool charging, bool battery_present)
     g_ups_config.status1.bits.charging = charging;
     g_ups_config.status1.bits.battery_present = battery_present;
 
-    // 自动设置放电状态
-    if (ac_present && charging)
-    {
-        g_ups_config.status1.bits.discharging = false;
-        g_ups_config.current = (g_ups_config.current > 0) ? g_ups_config.current : 500; // 默认充电电流 500mA
-    }
-    else if (!ac_present)
+    if (!ac_present)
     {
         g_ups_config.status1.bits.discharging = true;
         g_ups_config.status1.bits.charging = false;
-        g_ups_config.current = (g_ups_config.current < 0) ? g_ups_config.current : -500; // 默认放电电流 -500mA
+        if (g_ups_config.current >= 0)
+        {
+            g_ups_config.current = -500;
+        }
+    }
+    else if (charging)
+    {
+        g_ups_config.status1.bits.discharging = false;
+        if (g_ups_config.current <= 0)
+        {
+            g_ups_config.current = 500;
+        }
     }
     else
     {

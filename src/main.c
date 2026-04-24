@@ -15,32 +15,25 @@
 void SystemClock_Config(void);
 void Error_Handler(void);
 
-/* USB D+ 上拉模拟变量 */
-static bool s_usb_dp_held_low = false;
-
 /* UPS 配置 (通用 HID Power Device) */
 ups_hid_config_t g_ups_config = UPS_HID_DEFAULT_CONFIG();
 
-static void usb_dp_hold_low(bool hold)
+static void usb_dp_reenumerate(void)
 {
-    GPIO_InitTypeDef gpio = {0};
-    gpio.Pin = GPIO_PIN_12;
+    GPIO_InitTypeDef gpio =
+    {
+        .Pin   = GPIO_PIN_12,
+        .Mode  = GPIO_MODE_OUTPUT_OD,
+        .Speed = GPIO_SPEED_FREQ_LOW
+    };
 
-    if (hold)
-    {
-        gpio.Mode = GPIO_MODE_OUTPUT_OD;
-        gpio.Speed = GPIO_SPEED_FREQ_LOW;
-        HAL_GPIO_Init(GPIOA, &gpio);
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
-        s_usb_dp_held_low = true;
-    }
-    else
-    {
-        gpio.Mode = GPIO_MODE_INPUT;
-        gpio.Pull = GPIO_NOPULL;
-        HAL_GPIO_Init(GPIOA, &gpio);
-        s_usb_dp_held_low = false;
-    }
+    HAL_GPIO_Init(GPIOA, &gpio);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
+    HAL_Delay(200);
+
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &gpio);
 }
 
 int main(void)
@@ -59,14 +52,12 @@ int main(void)
     HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
 
-    /* 软件模拟USB上拉：先把D+拉低 */
+    /* 软件模拟USB重新枚举 */
     __HAL_RCC_GPIOA_CLK_ENABLE();
-    usb_dp_hold_low(true);
-    HAL_Delay(200);
+    usb_dp_reenumerate();
 
     /* 初始化 TinyUSB */
     tusb_init();
-    usb_dp_hold_low(false);
     HAL_Delay(5);
     (void)tud_connect();
 

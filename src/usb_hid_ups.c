@@ -27,17 +27,13 @@ void ups_hid_periodic_task(void)
         return;
     }
 
-    // 发送 Power Summary Input 报告 (Report ID 1)
-    // 格式: [RemainingCapacity(1)] [RunTimeToEmpty(2)] [Voltage(2)] [Current(2)] [PresentStatus(1)]
-    // 总长度: 8字节
-    uint8_t buffer[16];
-    uint16_t len = build_hid_input_report(REPORT_ID_POWER_SUMMARY, buffer, sizeof(buffer));
+    uint8_t buffer[8];
+    uint16_t const len = build_hid_input_report(REPORT_ID_POWER_SUMMARY, buffer, sizeof(buffer));
     if (len > 0)
     {
         (void)tud_hid_report(REPORT_ID_POWER_SUMMARY, buffer, len);
+        hid_last_report_ms = now_ms;
     }
-
-    hid_last_report_ms = now_ms;
 }
 
 void tud_hid_set_report_cb(uint8_t instance,

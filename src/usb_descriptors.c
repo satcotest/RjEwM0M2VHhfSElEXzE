@@ -310,7 +310,7 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
     }
     else
     {
-        if (index >= sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))
+        if (index >= TU_ARRAY_SIZE(string_desc_arr))
         {
             return NULL;
         }
@@ -329,11 +329,11 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 
         for (uint8_t i = 0; i < chr_count; i++)
         {
-            _desc_str[1 + i] = str[i];
+            _desc_str[1 + i] = (uint16_t)str[i];
         }
     }
 
-    _desc_str[0] = (TUSB_DESC_STRING << 8) | (2 * chr_count + 2);
+    _desc_str[0] = (uint16_t)((TUSB_DESC_STRING << 8) | (2u * chr_count + 2u));
 
     return _desc_str;
 }
