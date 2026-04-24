@@ -63,17 +63,11 @@ int main(void)
 
     while (1)
     {
-        // USB 任务处理
         tud_task();
-
-        // HID 报告任务
         ups_hid_periodic_task();
 
-        // ADC 任务 (取消注释以启用)
-        // #ifdef ENABLE_ADC
-        // ups_adc_periodic_task();
-        // ups_adc_update_hid_params();
-        // #endif
+        // 无任务时进入低功耗等待中断
+        __WFI();
     }
 }
 

@@ -54,15 +54,18 @@ static uint16_t build_power_summary_feature(uint8_t *buffer, uint16_t reqlen)
         return 0u;
     }
 
-    buffer[0]  = g_ups_config.i_manufacturer;
-    buffer[1]  = g_ups_config.i_product;
-    buffer[2]  = g_ups_config.i_serial;
-    buffer[3]  = g_ups_config.i_name;
-    buffer[4]  = g_ups_config.i_device_chemistry;
-    buffer[5]  = g_ups_config.capacity_mode;
-    buffer[6]  = g_ups_config.rechargeable ? 1u : 0u;
-    buffer[7]  = g_ups_config.warning_capacity_limit;
-    buffer[8]  = g_ups_config.remaining_capacity_limit;
+    // 前9字节：字符串索引(5) + 模式属性(2) + 容量限制(2)
+    buffer[0] = g_ups_config.i_manufacturer;
+    buffer[1] = g_ups_config.i_product;
+    buffer[2] = g_ups_config.i_serial;
+    buffer[3] = g_ups_config.i_name;
+    buffer[4] = g_ups_config.i_device_chemistry;
+    buffer[5] = g_ups_config.capacity_mode;
+    buffer[6] = g_ups_config.rechargeable ? 1u : 0u;
+    buffer[7] = g_ups_config.warning_capacity_limit;
+    buffer[8] = g_ups_config.remaining_capacity_limit;
+
+    // 中间7字节：容量值(3) + 时间值(4)
     buffer[9]  = g_ups_config.remaining_capacity;
     buffer[10] = g_ups_config.full_charge_capacity;
     buffer[11] = g_ups_config.design_capacity;
@@ -70,10 +73,12 @@ static uint16_t build_power_summary_feature(uint8_t *buffer, uint16_t reqlen)
     buffer[13] = (uint8_t)(g_ups_config.run_time_to_empty >> 8);
     buffer[14] = (uint8_t)(g_ups_config.remaining_time_limit & 0xFFu);
     buffer[15] = (uint8_t)(g_ups_config.remaining_time_limit >> 8);
+
+    // 后4字节：粒度(2) + 状态(1) + 填充(1)
     buffer[16] = g_ups_config.capacity_granularity_1;
     buffer[17] = g_ups_config.capacity_granularity_2;
     buffer[18] = pack_present_status();
-    buffer[19] = 0u; // 填充到20字节对齐
+    buffer[19] = 0u; // 填充
 
     return FEATURE_REPORT_SIZE;
 }

@@ -49,8 +49,21 @@ typedef union {
 } ups_status_byte2_t;
 
 // UPS 配置结构体 (通用 HID Power Device)
+// 按4字节对齐优化内存布局
 typedef struct {
-    // === 容量设置 ===
+    // === 32位组 ===
+    uint32_t report_interval_ms;       // 报告间隔 (毫秒)
+
+    // === 16位组 ===
+    uint16_t run_time_to_empty;        // 剩余运行时间 (分钟)
+    uint16_t remaining_time_limit;     // 剩余时间限制 (分钟)
+    uint16_t voltage;                  // 电压 (单位: 100mV = 0.1V)
+    int16_t  current;                  // 电流 (单位: mA, 正=充电, 负=放电)
+    uint16_t battery_voltage;          // 电池电压 (单位: 100mV)
+    int16_t  battery_current;          // 电池电流 (单位: mA)
+    uint16_t temperature;              // 温度 (单位: 0.1°C)
+
+    // === 8位组 ===
     uint8_t remaining_capacity;        // 当前电量 0-100
     uint8_t full_charge_capacity;      // 满电容量 0-100
     uint8_t design_capacity;           // 设计容量 0-100
@@ -60,31 +73,17 @@ typedef struct {
     uint8_t capacity_granularity_1;    // 容量粒度1
     uint8_t capacity_granularity_2;    // 容量粒度2
 
-    // === 时间设置 ===
-    uint16_t run_time_to_empty;        // 剩余运行时间 (分钟)
-    uint16_t remaining_time_limit;     // 剩余时间限制 (分钟)
-
-    // === 电气参数 ===
-    uint16_t voltage;                  // 电压 (单位: 100mV = 0.1V)
-    int16_t  current;                  // 电流 (单位: mA, 正=充电, 负=放电)
-    uint16_t battery_voltage;          // 电池电压 (单位: 100mV)
-    int16_t  battery_current;          // 电池电流 (单位: mA)
-    uint16_t temperature;              // 温度 (单位: 0.1°C)
-
-    // === 状态设置 ===
+    // === 状态位 ===
     ups_status_byte1_t status1;
     ups_status_byte2_t status2;
 
     // === 设备属性 ===
-    bool rechargeable;                 // 是否可充电
     uint8_t i_manufacturer;            // 制造商字符串索引
     uint8_t i_product;                 // 产品字符串索引
     uint8_t i_serial;                  // 序列号字符串索引
     uint8_t i_name;                    // 名称字符串索引
     uint8_t i_device_chemistry;        // 电池化学类型字符串索引
-
-    // === 报告间隔 ===
-    uint32_t report_interval_ms;       // 报告间隔 (毫秒)
+    bool    rechargeable;              // 是否可充电
 } ups_hid_config_t;
 
 // ADC 通道配置 (为以后ADC功能预留)
@@ -108,6 +107,14 @@ typedef struct {
 
 // 默认配置 (通用 UPS)
 #define UPS_HID_DEFAULT_CONFIG() { \
+    .report_interval_ms = 1000, \
+    .run_time_to_empty = 600, \
+    .remaining_time_limit = 120, \
+    .voltage = 120, \
+    .current = 500, \
+    .battery_voltage = 120, \
+    .battery_current = 500, \
+    .temperature = 250, \
     .remaining_capacity = 100, \
     .full_charge_capacity = 100, \
     .design_capacity = 100, \
@@ -116,22 +123,14 @@ typedef struct {
     .capacity_mode = CAPACITY_MODE_PERCENT, \
     .capacity_granularity_1 = 1, \
     .capacity_granularity_2 = 1, \
-    .run_time_to_empty = 600, \
-    .remaining_time_limit = 120, \
-    .voltage = 120, \
-    .current = 500, \
-    .battery_voltage = 120, \
-    .battery_current = 500, \
-    .temperature = 250, \
     .status1 = { .value = 0x4F }, \
     .status2 = { .value = 0x00 }, \
-    .rechargeable = true, \
     .i_manufacturer = 1, \
     .i_product = 2, \
     .i_serial = 3, \
     .i_name = 2, \
     .i_device_chemistry = 1, \
-    .report_interval_ms = 1000, \
+    .rechargeable = true, \
 }
 
 // 函数声明
